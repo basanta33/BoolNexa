@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# The existing Reflex UI file is deliberately onboarded later so this baseline
+# does not create a giant formatting-only diff that could obscure UI regressions.
+extend-exclude = ["digital_logic_lab/digital_logic_lab.py"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+files = ["digital_logic_lab/logic_core.py"]
