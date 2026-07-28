@@ -14,6 +14,7 @@ from .logic_core import (
     get_component_input_count,
     get_component_width,
     get_input_pin_offset,
+    get_input_pin_position,
     get_output_pin_offset,
     get_source_value,
 )
@@ -66,6 +67,7 @@ class State(rx.State):
 
   pan_x: float = 0.0
   pan_y: float = 0.0
+  zoom: float = 1.0
 
   # Email registration required before project saving.
   registration_email: str = ""
@@ -558,6 +560,13 @@ class State(rx.State):
     self.pan_x = float(data.get("panX", self.pan_x))
     self.pan_y = float(data.get("panY", self.pan_y))
 
+  def handle_view_change(self, data: dict):
+    if not data or not isinstance(data, dict):
+      return
+    self.pan_x = float(data.get("panX", self.pan_x))
+    self.pan_y = float(data.get("panY", self.pan_y))
+    self.zoom = max(0.25, min(2.0, float(data.get("zoom", self.zoom))))
+
   def handle_gate_drag_end(self, data: dict):
     if not data or not isinstance(data, dict):
       return
@@ -725,7 +734,9 @@ class State(rx.State):
       target_x = g_data.get("x", 0)
       target_y = g_data.get("y", 0)
       g_type = g_data.get("type", "")
-      num_in = get_component_input_count(g_type)
+      num_in = int(
+          g_data.get("num_inputs", get_component_input_count(g_type))
+      )
 
       for idx in range(1, num_in + 1):
         slot = f"input{idx}_src"
@@ -750,11 +761,11 @@ class State(rx.State):
         src_gate = self.gates[base_src_key]
         src_type = src_gate.get("type", "")
         src_pin_y_offset = get_output_pin_offset(src_type, port_name)
-        src_x = src_gate["x"] + get_component_width(src_type) + 9
+        src_x = src_gate["x"] + get_component_width(src_type)
         src_y = src_gate["y"] + src_pin_y_offset
 
-        dst_pin_y_offset = get_input_pin_offset(g_type, idx, num_in)
-        dst_x = target_x - 9
+        dst_side, dst_pin_x_offset, dst_pin_y_offset = get_input_pin_position(g_type, idx, num_in)
+        dst_x = target_x + dst_pin_x_offset
         dst_y = target_y + dst_pin_y_offset
 
         wire_id = f"{src_composite}:{target_key}:{slot}"
@@ -795,6 +806,8 @@ class State(rx.State):
             "d": path_str,
             "color": wire_color,
             "offset_y": str(dst_pin_y_offset),
+            "offset_x": str(dst_pin_x_offset),
+            "dst_side": dst_side,
             "mid_x": str(mid_x),
             "junc_x": str(src_x + 16 if branch_idx > 0 else src_x),
             "src_x": str(src_x),
@@ -1214,134 +1227,135 @@ def vec_not_ieee() -> rx.Component:
   )
 
 
-def vec_and_ieee(invert=False) -> rx.Component:
-  elements = [
+# Basic two-input gates use pin centers at y=10 and y=30 inside the
+# 40px symbol. The gate card adds the remaining vertical offset, matching
+# shared logical wire anchors exactly and preventing 2px visual misalignment.
+def vec_and_ieee(invert=False, num_inputs=2) -> rx.Component:
+  """IEEE AND/NAND symbol sized to the selected number of inputs."""
+  count = max(2, min(6, int(num_inputs)))
+  height = 20 * (count + 1)
+  center_y = height // 2
+  body_top = 10
+  body_bottom = height - 10
+  radius = (body_bottom - body_top) // 2
+  body_right = 30 + radius
+  bubble_x = body_right + 5
+  output_start = bubble_x + 4 if invert else body_right
+  output_end = 86
+
+  leads = [
       rx.el.svg.line(
-          x1="0", y1="12", x2="16", y2="12", stroke="#0f172a", stroke_width="2.5"
-      ),
+          x1="0", y1=str(20 * idx), x2="16", y2=str(20 * idx),
+          stroke="#0f172a", stroke_width="2.5",
+      )
+      for idx in range(1, count + 1)
+  ]
+
+  parts = [
       rx.el.svg.line(
-          x1="0", y1="28", x2="16", y2="28", stroke="#0f172a", stroke_width="2.5"
-      ),
-      rx.el.svg.line(
-          x1="62" if invert else "54",
-          y1="20",
-          x2="86",
-          y2="20",
-          stroke="#0f172a",
-          stroke_width="2.5",
+          x1="16", y1=str(body_top), x2="16", y2=str(body_bottom),
+          stroke="#0f172a", stroke_width="2.5",
       ),
       rx.el.svg.path(
-          d="M 16 5 L 38 5 A 15 15 0 0 1 38 35 L 16 35 Z",
-          fill="#ffffff",
-          stroke="#0f172a",
-          stroke_width="2.5",
-          stroke_linejoin="round",
+          d=(
+              f"M 16 {body_top} L 30 {body_top} "
+              f"A {radius} {radius} 0 0 1 30 {body_bottom} "
+              f"L 16 {body_bottom} Z"
+          ),
+          fill="#ffffff", stroke="#0f172a", stroke_width="2.5",
       ),
   ]
+
   if invert:
-    elements.append(
+    parts.append(
         rx.el.svg.circle(
-            cx="58",
-            cy="20",
-            r="4",
-            fill="#ffffff",
-            stroke="#0f172a",
-            stroke_width="2.5",
+            cx=str(bubble_x), cy=str(center_y), r="4",
+            fill="#ffffff", stroke="#0f172a", stroke_width="2.5",
         )
     )
+
+  parts.append(
+      rx.el.svg.line(
+          x1=str(output_start), y1=str(center_y),
+          x2=str(output_end), y2=str(center_y),
+          stroke="#0f172a", stroke_width="2.5",
+      )
+  )
+
   return rx.el.svg(
-      *elements,
-      view_box="0 0 86 40",
+      *leads,
+      *parts,
+      view_box=f"0 0 86 {height}",
       width="86px",
-      height="40px",
+      height=f"{height}px",
       style={"pointerEvents": "none"},
   )
 
 
-def vec_or_ieee(invert=False, exclusive=False) -> rx.Component:
-  or_body = "M 16 5 Q 28 20 16 35 Q 38 35 54 20 Q 38 5 16 5 Z"
-  xor_back = "M 10 5 Q 22 20 10 35"
-  lead_x2 = "10" if exclusive else "16"
+def vec_or_ieee(invert=False, xor=False, num_inputs=2) -> rx.Component:
+  """IEEE OR/NOR/XOR/XNOR symbol sized to the selected number of inputs."""
+  count = 2 if xor else max(2, min(6, int(num_inputs)))
+  height = 20 * (count + 1)
+  center_y = height // 2
+  top = 10
+  bottom = height - 10
+  right = 62
+  bubble_x = 66
+  output_start = 70 if invert else right
 
-  elements = [
+  leads = [
       rx.el.svg.line(
-          x1="0",
-          y1="12",
-          x2=lead_x2,
-          y2="12",
-          stroke="#0f172a",
-          stroke_width="2.5",
-      ),
-      rx.el.svg.line(
-          x1="0",
-          y1="28",
-          x2=lead_x2,
-          y2="28",
-          stroke="#0f172a",
-          stroke_width="2.5",
-      ),
-      rx.el.svg.line(
-          x1="62" if invert else "54",
-          y1="20",
-          x2="86",
-          y2="20",
-          stroke="#0f172a",
-          stroke_width="2.5",
-      ),
+          x1="0", y1=str(20 * idx), x2="18", y2=str(20 * idx),
+          stroke="#0f172a", stroke_width="2.5",
+      )
+      for idx in range(1, count + 1)
   ]
-  if exclusive:
-    elements.append(
+
+  parts = []
+  if xor:
+    parts.append(
         rx.el.svg.path(
-            d=xor_back,
-            fill="none",
-            stroke="#0f172a",
-            stroke_width="2.5",
-            stroke_linecap="round",
+            d=f"M 9 {top} Q 22 {center_y} 9 {bottom}",
+            fill="none", stroke="#0f172a", stroke_width="2.5",
         )
     )
-    elements.extend([
-        rx.el.svg.line(
-            x1="10",
-            y1="12",
-            x2="16",
-            y2="12",
-            stroke="#0f172a",
-            stroke_width="2.5",
-        ),
-        rx.el.svg.line(
-            x1="10",
-            y1="28",
-            x2="16",
-            y2="28",
-            stroke="#0f172a",
-            stroke_width="2.5",
-        ),
-    ])
-  elements.append(
+
+  parts.extend([
       rx.el.svg.path(
-          d=or_body,
-          fill="#ffffff",
-          stroke="#0f172a",
-          stroke_width="2.5",
-          stroke_linejoin="round",
+          d=f"M 14 {top} Q 27 {center_y} 14 {bottom}",
+          fill="none", stroke="#0f172a", stroke_width="2.5",
+      ),
+      rx.el.svg.path(
+          d=(
+              f"M 14 {top} "
+              f"Q 45 {top} {right} {center_y} "
+              f"Q 45 {bottom} 14 {bottom}"
+          ),
+          fill="#ffffff", stroke="#0f172a", stroke_width="2.5",
+      ),
+  ])
+
+  if invert:
+    parts.append(
+        rx.el.svg.circle(
+            cx=str(bubble_x), cy=str(center_y), r="4",
+            fill="#ffffff", stroke="#0f172a", stroke_width="2.5",
+        )
+    )
+
+  parts.append(
+      rx.el.svg.line(
+          x1=str(output_start), y1=str(center_y), x2="86", y2=str(center_y),
+          stroke="#0f172a", stroke_width="2.5",
       )
   )
-  if invert:
-    elements.append(
-        rx.el.svg.circle(
-            cx="58",
-            cy="20",
-            r="4",
-            fill="#ffffff",
-            stroke="#0f172a",
-            stroke_width="2.5",
-        )
-    )
+
   return rx.el.svg(
-      *elements,
-      view_box="0 0 86 40",
+      *leads,
+      *parts,
+      view_box=f"0 0 86 {height}",
       width="86px",
-      height="40px",
+      height=f"{height}px",
       style={"pointerEvents": "none"},
   )
 
@@ -1596,11 +1610,11 @@ def vec_mux_2_1() -> rx.Component:
       ),
       rx.el.svg.text("I0", x="25", y="28", font_size="7px", font_weight="bold"),
       rx.el.svg.text("I1", x="25", y="54", font_size="7px", font_weight="bold"),
-      rx.el.svg.text("S", x="26", y="72", font_size="7px", font_weight="bold"),
+      rx.el.svg.text("S", x="60", y="72", text_anchor="middle", font_size="7px", font_weight="bold"),
       rx.el.svg.text("Y", x="82", y="44", font_size="8px", font_weight="bold"),
       rx.el.svg.line(x1="0", y1="22", x2="21", y2="22", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="0", y1="48", x2="21", y2="48", stroke="#0f172a", stroke_width="2"),
-      rx.el.svg.line(x1="0", y1="68", x2="21", y2="68", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="60", y1="62", x2="60", y2="80", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="94", y1="40", x2="120", y2="40", stroke="#0f172a", stroke_width="2"),
       view_box="0 0 120 80", width="120px", height="80px",
       style={"pointerEvents": "none"},
@@ -1619,15 +1633,103 @@ def vec_demux_1_2() -> rx.Component:
           font_size="8px", font_weight="bold", fill="#0f172a",
       ),
       rx.el.svg.text("D", x="26", y="36", font_size="8px", font_weight="bold"),
-      rx.el.svg.text("S", x="26", y="66", font_size="7px", font_weight="bold"),
+      rx.el.svg.text("S", x="60", y="70", text_anchor="middle", font_size="7px", font_weight="bold"),
       rx.el.svg.text("Y0", x="79", y="27", font_size="7px", font_weight="bold"),
       rx.el.svg.text("Y1", x="79", y="60", font_size="7px", font_weight="bold"),
       rx.el.svg.line(x1="0", y1="30", x2="21", y2="30", stroke="#0f172a", stroke_width="2"),
-      rx.el.svg.line(x1="0", y1="62", x2="21", y2="62", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="60", y1="62", x2="60", y2="80", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="94", y1="22", x2="120", y2="22", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="94", y1="55", x2="120", y2="55", stroke="#0f172a", stroke_width="2"),
       view_box="0 0 120 80", width="120px", height="80px",
       style={"pointerEvents": "none"},
+  )
+
+
+def vec_functional_block(
+    title: str,
+    inputs: tuple[tuple[str, int], ...],
+    outputs: tuple[tuple[str, int], ...],
+    width: int,
+    height: int,
+    controls: tuple[tuple[str, int], ...] = (),
+) -> rx.Component:
+  """IEC-style rectangular functional block with named logical ports."""
+  children: list[rx.Component] = [
+      rx.el.svg.rect(
+          x="18", y="5", width=str(width - 44), height=str(height - 10),
+          rx="3", fill="#ffffff", stroke="#0f172a", stroke_width="2",
+      ),
+      rx.el.svg.text(
+          title, x=str(width // 2), y="15", text_anchor="middle",
+          font_size="8px", font_weight="bold", fill="#0f172a",
+      ),
+  ]
+  for name, offset in inputs:
+    children.extend([
+        rx.el.svg.line(
+            x1="0", y1=str(offset), x2="18", y2=str(offset),
+            stroke="#0f172a", stroke_width="2",
+        ),
+        rx.el.svg.text(
+            name, x="22", y=str(offset + 3), font_size="7px",
+            font_weight="bold", fill="#0f172a",
+        ),
+    ])
+  for name, offset_x in controls:
+    children.extend([
+        rx.el.svg.line(
+            x1=str(offset_x), y1=str(height - 5), x2=str(offset_x), y2=str(height),
+            stroke="#0f172a", stroke_width="2",
+        ),
+        rx.el.svg.text(
+            name, x=str(offset_x), y=str(height - 10), text_anchor="middle",
+            font_size="7px", font_weight="bold", fill="#0f172a",
+        ),
+    ])
+  for name, offset in outputs:
+    children.extend([
+        rx.el.svg.line(
+            x1=str(width - 26), y1=str(offset), x2=str(width), y2=str(offset),
+            stroke="#0f172a", stroke_width="2",
+        ),
+        rx.el.svg.text(
+            name, x=str(width - 31), y=str(offset + 3), text_anchor="end",
+            font_size="7px", font_weight="bold", fill="#0f172a",
+        ),
+    ])
+  return rx.el.svg(
+      *children, view_box=f"0 0 {width} {height}",
+      width=f"{width}px", height=f"{height}px",
+      style={"pointerEvents": "none"},
+  )
+
+
+def vec_mux_4_1() -> rx.Component:
+  return vec_functional_block(
+      "4:1 MUX",
+      (("I0", 18), ("I1", 36), ("I2", 54), ("I3", 72)),
+      (("Y", 54),), 130, 120, (("S0", 50), ("S1", 80)),
+  )
+
+
+def vec_demux_1_4() -> rx.Component:
+  return vec_functional_block(
+      "1:4 DEMUX", (("D", 30),),
+      (("Y0", 18), ("Y1", 42), ("Y2", 66), ("Y3", 90)), 130, 110, (("S0", 50), ("S1", 80)),
+  )
+
+
+def vec_decoder_2_4() -> rx.Component:
+  return vec_functional_block(
+      "2→4 DEC", (),
+      (("Y0", 18), ("Y1", 38), ("Y2", 58), ("Y3", 78)), 130, 96, (("A0", 50), ("A1", 80)),
+  )
+
+
+def vec_encoder_4_2() -> rx.Component:
+  return vec_functional_block(
+      "4→2 ENC", (("D0", 18), ("D1", 38), ("D2", 58), ("D3", 78)),
+      (("A0", 34), ("A1", 64)), 130, 96,
   )
 
 
@@ -1646,6 +1748,7 @@ def render_schematic_symbol(
     seg_f=0,
     seg_g=0,
     hex_char="0",
+    num_inputs=2,
 ) -> rx.Component:
   return rx.cond(
       gate_type == "INPUT",
@@ -1674,26 +1777,86 @@ def render_schematic_symbol(
                                   gate_type == "DEMUX_1_2",
                                   vec_demux_1_2(),
                                   rx.cond(
-                                      gate_type == "NOT",
-                                      vec_not_ieee(),
+                                      gate_type == "MUX_4_1",
+                                      vec_mux_4_1(),
+                                      rx.cond(
+                                          gate_type == "DEMUX_1_4",
+                                          vec_demux_1_4(),
+                                          rx.cond(
+                                              gate_type == "DECODER_2_4",
+                                              vec_decoder_2_4(),
+                                              rx.cond(
+                                                  gate_type == "ENCODER_4_2",
+                                                  vec_encoder_4_2(),
+                                                  rx.cond(
+                                                      gate_type == "NOT",
+                                                      vec_not_ieee(),
                       rx.cond(
                           gate_type == "AND",
-                              vec_and_ieee(False),
+                              rx.cond(
+                                   num_inputs == 6, vec_and_ieee(False, 6),
+                                   rx.cond(
+                                       num_inputs == 5, vec_and_ieee(False, 5),
+                                       rx.cond(
+                                           num_inputs == 4, vec_and_ieee(False, 4),
+                                           rx.cond(
+                                               num_inputs == 3, vec_and_ieee(False, 3),
+                                               vec_and_ieee(False, 2),
+                                           ),
+                                       ),
+                                   ),
+                               ),
                               rx.cond(
                                   gate_type == "NAND",
-                                  vec_and_ieee(True),
+                                  rx.cond(
+                                   num_inputs == 6, vec_and_ieee(True, 6),
+                                   rx.cond(
+                                       num_inputs == 5, vec_and_ieee(True, 5),
+                                       rx.cond(
+                                           num_inputs == 4, vec_and_ieee(True, 4),
+                                           rx.cond(
+                                               num_inputs == 3, vec_and_ieee(True, 3),
+                                               vec_and_ieee(True, 2),
+                                           ),
+                                       ),
+                                   ),
+                               ),
                                   rx.cond(
                                       gate_type == "OR",
-                                      vec_or_ieee(False, False),
+                                      rx.cond(
+                                   num_inputs == 6, vec_or_ieee(False, False, 6),
+                                   rx.cond(
+                                       num_inputs == 5, vec_or_ieee(False, False, 5),
+                                       rx.cond(
+                                           num_inputs == 4, vec_or_ieee(False, False, 4),
+                                           rx.cond(
+                                               num_inputs == 3, vec_or_ieee(False, False, 3),
+                                               vec_or_ieee(False, False, 2),
+                                           ),
+                                       ),
+                                   ),
+                               ),
                                       rx.cond(
                                           gate_type == "NOR",
-                                          vec_or_ieee(True, False),
+                                          rx.cond(
+                                   num_inputs == 6, vec_or_ieee(True, False, 6),
+                                   rx.cond(
+                                       num_inputs == 5, vec_or_ieee(True, False, 5),
+                                       rx.cond(
+                                           num_inputs == 4, vec_or_ieee(True, False, 4),
+                                           rx.cond(
+                                               num_inputs == 3, vec_or_ieee(True, False, 3),
+                                               vec_or_ieee(True, False, 2),
+                                           ),
+                                       ),
+                                   ),
+                               ),
                                           rx.cond(
                                               gate_type == "XOR",
-                                              vec_or_ieee(False, True),
+                                              vec_or_ieee(False, True, 2),
                                               rx.cond(
                                                   gate_type == "XNOR",
-                                                  vec_or_ieee(True, True),
+                                                  vec_or_ieee(True, True, 2),
                                                   rx.cond(
                                                       gate_type == "D_FF",
                                                       vec_d_ff(),
@@ -1720,6 +1883,10 @@ def render_schematic_symbol(
                               ),
                           ),
                       ),
+                                                  ),
+                                              ),
+                                          ),
+                                      ),
                                   ),
                               ),
                           ),
@@ -1794,6 +1961,7 @@ def render_input_pin_item(
               "border-color": "#b91c1c",
           },
           transition="all 0.15s ease",
+          class_name="terminal-dot",
       ),
       width="18px",
       height="18px",
@@ -1813,6 +1981,32 @@ def render_input_pin_item(
           "data-pin-gate": cell_key,
           "data-pin-slot": slot_name,
           "data-offset-y": str(offset_y),
+      },
+      on_click=State.connect_or_disconnect_input(cell_key, slot_name),
+  )
+
+
+def render_bottom_input_pin(
+    cell_key: rx.Var, idx: int, offset_x: int, offset_y: int
+) -> rx.Component:
+  slot_name = f"input{idx}_src"
+  return rx.box(
+      rx.box(
+          width="8px", height="8px", border_radius="50%", bg="#0f172a",
+          border="2px solid #ffffff",
+          _hover={"bg": "#ef4444", "transform": "scale(1.8)", "border-color": "#b91c1c"},
+          transition="all 0.15s ease",
+          class_name="terminal-dot",
+      ),
+      width="18px", height="18px", position="absolute",
+      left=f"{offset_x}px", top=f"{offset_y}px",
+      transform="translate(-50%, -50%)", z_index="15",
+      style={"display": "flex", "align_items": "center", "justify_content": "center"},
+      class_name="input-pin-bubble bottom-input-pin", cursor="pointer",
+      custom_attrs={
+          "data-pin-gate": cell_key, "data-pin-slot": slot_name,
+          "data-offset-x": str(offset_x), "data-offset-y": str(offset_y),
+          "data-pin-side": "bottom",
       },
       on_click=State.connect_or_disconnect_input(cell_key, slot_name),
   )
@@ -1839,6 +2033,7 @@ def render_named_output_pin(
               "border-color": "#b91c1c",
           },
           transition="all 0.15s ease",
+          class_name="terminal-dot",
       ),
       width="18px",
       height="18px",
@@ -1886,7 +2081,14 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   is_full_adder = g_type == "FULL_ADDER"
   is_mux_2_1 = g_type == "MUX_2_1"
   is_demux_1_2 = g_type == "DEMUX_1_2"
-  is_msi_lsi = is_half_adder | is_full_adder | is_mux_2_1 | is_demux_1_2
+  is_mux_4_1 = g_type == "MUX_4_1"
+  is_demux_1_4 = g_type == "DEMUX_1_4"
+  is_decoder_2_4 = g_type == "DECODER_2_4"
+  is_encoder_4_2 = g_type == "ENCODER_4_2"
+  is_msi_lsi = (
+      is_half_adder | is_full_adder | is_mux_2_1 | is_demux_1_2
+      | is_mux_4_1 | is_demux_1_4 | is_decoder_2_4 | is_encoder_4_2
+  )
   is_source = State.wiring_source == cell_key
   is_source_bar = State.wiring_source == cell_key + ":q_bar"
   is_selected = State.selected_gate_key == cell_key
@@ -1907,42 +2109,41 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   card_height = rx.cond(
-      is_half_adder,
-      "70px",
+      is_half_adder, "70px",
       rx.cond(
-          is_full_adder,
-          "90px",
+          is_full_adder, "90px",
           rx.cond(
-              is_mux_2_1 | is_demux_1_2,
-              "80px",
+              is_mux_4_1, "120px",
               rx.cond(
-                  g_type == "CLK",
-          "90px",
-          rx.cond(
-              is_seven_seg,
-              "100px",
-              rx.cond(
-                  (g_type == "RS_FF") | (g_type == "JK_FF"),
-                  "70px",
+                  is_demux_1_4, "110px",
                   rx.cond(
-                      (g_type == "D_FF") | (g_type == "T_FF"),
-                      "66px",
+                      is_decoder_2_4 | is_encoder_4_2, "96px",
                       rx.cond(
-                          num_inputs == 3,
-                          "80px",
+                          is_mux_2_1 | is_demux_1_2, "80px",
                           rx.cond(
-                              num_inputs == 4,
-                              "100px",
+                              g_type == "CLK", "90px",
                               rx.cond(
-                                  num_inputs == 5,
-                                  "120px",
-                                  rx.cond(num_inputs == 6, "140px", "60px"),
+                                  is_seven_seg, "100px",
+                                  rx.cond(
+                                      (g_type == "RS_FF") | (g_type == "JK_FF"), "70px",
+                                      rx.cond(
+                                          (g_type == "D_FF") | (g_type == "T_FF"), "66px",
+                                          rx.cond(
+                                              num_inputs == 3, "80px",
+                                              rx.cond(
+                                                  num_inputs == 4, "100px",
+                                                  rx.cond(
+                                                      num_inputs == 5, "120px",
+                                                      rx.cond(num_inputs == 6, "140px", "60px"),
+                                                  ),
+                                              ),
+                                          ),
+                                      ),
+                                  ),
                               ),
                           ),
                       ),
                   ),
-              ),
-          ),
               ),
           ),
       ),
@@ -2009,33 +2210,28 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   pin1 = rx.cond(
-      is_half_adder,
-      render_input_pin_item(cell_key, 1, 25),
+      is_half_adder, render_input_pin_item(cell_key, 1, 25),
       rx.cond(
-          is_full_adder,
-          render_input_pin_item(cell_key, 1, 22),
+          is_full_adder | is_mux_2_1, render_input_pin_item(cell_key, 1, 22),
           rx.cond(
-              is_mux_2_1,
-              render_input_pin_item(cell_key, 1, 22),
+              is_demux_1_2 | is_demux_1_4, render_input_pin_item(cell_key, 1, 30),
               rx.cond(
-                  is_demux_1_2,
-                  render_input_pin_item(cell_key, 1, 30),
+                  is_mux_4_1 | is_encoder_4_2, render_input_pin_item(cell_key, 1, 18),
                   rx.cond(
-                      (g_type == "NOT") | is_output,
-      render_input_pin_item(cell_key, 1, 30),
-      rx.cond(
-          is_seven_seg,
-          render_input_pin_item(cell_key, 1, 20),
-          rx.cond(
-              (g_type == "D_FF") | (g_type == "T_FF"),
-              render_input_pin_item(cell_key, 1, 15),
-              rx.cond(
-                  (g_type == "RS_FF") | (g_type == "JK_FF"),
-                  render_input_pin_item(cell_key, 1, 15),
-                  render_input_pin_item(cell_key, 1, 20),
-              ),
-          ),
-      ),
+                      is_decoder_2_4, rx.fragment(),
+                      rx.cond(
+                          (g_type == "NOT") | is_output, render_input_pin_item(cell_key, 1, 30),
+                          rx.cond(
+                              is_seven_seg, render_input_pin_item(cell_key, 1, 20),
+                              rx.cond(
+                                  (g_type == "D_FF") | (g_type == "T_FF"), render_input_pin_item(cell_key, 1, 15),
+                                  rx.cond(
+                                      (g_type == "RS_FF") | (g_type == "JK_FF"), render_input_pin_item(cell_key, 1, 15),
+                                      render_input_pin_item(cell_key, 1, 20),
+                                  ),
+                              ),
+                          ),
+                      ),
                   ),
               ),
           ),
@@ -2043,36 +2239,37 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   pin2 = rx.cond(
-      is_half_adder,
-      render_input_pin_item(cell_key, 2, 50),
+      is_half_adder, render_input_pin_item(cell_key, 2, 50),
       rx.cond(
-          is_full_adder,
-          render_input_pin_item(cell_key, 2, 45),
+          is_full_adder, render_input_pin_item(cell_key, 2, 45),
           rx.cond(
-              is_mux_2_1,
-              render_input_pin_item(cell_key, 2, 48),
+              is_mux_2_1, render_input_pin_item(cell_key, 2, 48),
               rx.cond(
-                  is_demux_1_2,
-                  render_input_pin_item(cell_key, 2, 62),
+                  is_demux_1_2, rx.fragment(),
                   rx.cond(
-                      is_seven_seg,
-      render_input_pin_item(cell_key, 2, 40),
-      rx.cond(
-          (g_type == "D_FF") | (g_type == "T_FF"),
-          render_input_pin_item(cell_key, 2, 45),
-          rx.cond(
-              (g_type == "RS_FF") | (g_type == "JK_FF"),
-              render_input_pin_item(cell_key, 2, 33),
-              rx.cond(
-                  ((num_inputs != 1)
-                   & (~is_output)
-                   & (~is_input)
-                   & (g_type != "NOT")),
-                  render_input_pin_item(cell_key, 2, 40),
-                  rx.fragment(),
-              ),
-          ),
-      ),
+                      is_mux_4_1, render_input_pin_item(cell_key, 2, 36),
+                      rx.cond(
+                          is_demux_1_4, rx.fragment(),
+                          rx.cond(
+                              is_decoder_2_4, rx.fragment(),
+                              rx.cond(
+                                  is_encoder_4_2, render_input_pin_item(cell_key, 2, 38),
+                                  rx.cond(
+                                      is_seven_seg, render_input_pin_item(cell_key, 2, 40),
+                                      rx.cond(
+                                          (g_type == "D_FF") | (g_type == "T_FF"), render_input_pin_item(cell_key, 2, 45),
+                                          rx.cond(
+                                              (g_type == "RS_FF") | (g_type == "JK_FF"), render_input_pin_item(cell_key, 2, 33),
+                                              rx.cond(
+                                                  ((num_inputs != 1) & (~is_output) & (~is_input) & ((g_type != "NOT") & (g_type != "XOR") & (g_type != "XNOR"))),
+                                                  render_input_pin_item(cell_key, 2, 40), rx.fragment(),
+                                              ),
+                                          ),
+                                      ),
+                                  ),
+                              ),
+                          ),
+                      ),
                   ),
               ),
           ),
@@ -2080,53 +2277,56 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   pin3 = rx.cond(
-      is_full_adder,
-      render_input_pin_item(cell_key, 3, 68),
+      is_full_adder, render_input_pin_item(cell_key, 3, 68),
       rx.cond(
-          is_mux_2_1,
-          render_input_pin_item(cell_key, 3, 68),
+          is_mux_4_1, render_input_pin_item(cell_key, 3, 54),
           rx.cond(
-              is_seven_seg,
-      render_input_pin_item(cell_key, 3, 60),
-      rx.cond(
-          (g_type == "RS_FF") | (g_type == "JK_FF"),
-          render_input_pin_item(cell_key, 3, 51),
-          rx.cond(
-              ((num_inputs == 3)
-               | (num_inputs == 4)
-               | (num_inputs == 5)
-               | (num_inputs == 6))
-              & (~is_output)
-              & (~is_input)
-,
-              render_input_pin_item(cell_key, 3, 60),
-              rx.fragment(),
-          ),
-      ),
+              is_demux_1_4, rx.fragment(),
+              rx.cond(
+                  is_encoder_4_2, render_input_pin_item(cell_key, 3, 58),
+                  rx.cond(
+                      is_seven_seg, render_input_pin_item(cell_key, 3, 60),
+                      rx.cond(
+                          (g_type == "RS_FF") | (g_type == "JK_FF"), render_input_pin_item(cell_key, 3, 51),
+                          rx.cond(
+                              ((num_inputs == 3) | (num_inputs == 4) | (num_inputs == 5) | (num_inputs == 6))
+                              & (~is_output) & (~is_input) & (~is_msi_lsi),
+                              render_input_pin_item(cell_key, 3, 60), rx.fragment(),
+                          ),
+                      ),
+                  ),
+              ),
           ),
       ),
   )
-
-  has_pin4 = (
-      (num_inputs == 4) | (num_inputs == 5) | (num_inputs == 6)
-  ) & (~is_output) & (~is_input) & (~is_msi_lsi)
-  has_pin5 = (
-      (num_inputs == 5) | (num_inputs == 6)
-  ) & (~is_output) & (~is_input) & (~is_msi_lsi)
-  has_pin6 = (
-      (num_inputs == 6)
-  ) & (~is_output) & (~is_input) & (~is_msi_lsi)
 
   pin4 = rx.cond(
-      is_seven_seg,
-      render_input_pin_item(cell_key, 4, 80),
-      rx.cond(has_pin4, render_input_pin_item(cell_key, 4, 80), rx.fragment()),
+      is_mux_4_1, render_input_pin_item(cell_key, 4, 72),
+      rx.cond(
+          is_encoder_4_2, render_input_pin_item(cell_key, 4, 78),
+          rx.cond(
+              is_seven_seg, render_input_pin_item(cell_key, 4, 80),
+              rx.cond(
+                  ((num_inputs == 4) | (num_inputs == 5) | (num_inputs == 6))
+                  & (~is_output) & (~is_input) & (~is_msi_lsi),
+                  render_input_pin_item(cell_key, 4, 80), rx.fragment(),
+              ),
+          ),
+      ),
   )
   pin5 = rx.cond(
-      has_pin5, render_input_pin_item(cell_key, 5, 100), rx.fragment()
+      is_mux_4_1, rx.fragment(),
+      rx.cond(
+          ((num_inputs == 5) | (num_inputs == 6)) & (~is_output) & (~is_input) & (~is_msi_lsi),
+          render_input_pin_item(cell_key, 5, 100), rx.fragment(),
+      ),
   )
   pin6 = rx.cond(
-      has_pin6, render_input_pin_item(cell_key, 6, 120), rx.fragment()
+      is_mux_4_1, rx.fragment(),
+      rx.cond(
+          (num_inputs == 6) & (~is_output) & (~is_input) & (~is_msi_lsi),
+          render_input_pin_item(cell_key, 6, 120), rx.fragment(),
+      ),
   )
 
   return rx.box(
@@ -2196,6 +2396,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
               seg_f,
               seg_g,
               hex_char,
+              num_inputs,
           ),
           style={
               "display": "flex",
@@ -2211,6 +2412,31 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
       rx.cond(
           ~is_input,
           rx.fragment(pin1, pin2, pin3, pin4, pin5, pin6),
+      ),
+      rx.cond(
+          is_mux_2_1, render_bottom_input_pin(cell_key, 3, 60, 89),
+          rx.cond(
+              is_demux_1_2, render_bottom_input_pin(cell_key, 2, 60, 89),
+              rx.cond(
+                  is_mux_4_1, rx.fragment(
+                      render_bottom_input_pin(cell_key, 5, 50, 129),
+                      render_bottom_input_pin(cell_key, 6, 80, 129),
+                  ),
+                  rx.cond(
+                      is_demux_1_4, rx.fragment(
+                          render_bottom_input_pin(cell_key, 2, 50, 119),
+                          render_bottom_input_pin(cell_key, 3, 80, 119),
+                      ),
+                      rx.cond(
+                          is_decoder_2_4, rx.fragment(
+                              render_bottom_input_pin(cell_key, 1, 50, 105),
+                              render_bottom_input_pin(cell_key, 2, 80, 105),
+                          ),
+                          rx.fragment(),
+                      ),
+                  ),
+              ),
+          ),
       ),
       rx.cond(
           (~is_output) & (~is_seven_seg) & (~is_msi_lsi),
@@ -2230,6 +2456,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                       "border-color": "#b91c1c",
                   },
                   transition="all 0.15s ease",
+                  class_name="terminal-dot",
               ),
               width="18px",
               height="18px",
@@ -2266,15 +2493,42 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   render_named_output_pin(cell_key, "COUT", 60),
               ),
               rx.cond(
-                  is_mux_2_1,
-                  render_named_output_pin(cell_key, "Y", 40),
+                  is_mux_2_1, render_named_output_pin(cell_key, "Y", 40),
                   rx.cond(
                       is_demux_1_2,
                       rx.fragment(
                           render_named_output_pin(cell_key, "Y0", 22),
                           render_named_output_pin(cell_key, "Y1", 55),
                       ),
-                      rx.fragment(),
+                      rx.cond(
+                          is_mux_4_1, render_named_output_pin(cell_key, "Y", 54),
+                          rx.cond(
+                              is_demux_1_4,
+                              rx.fragment(
+                                  render_named_output_pin(cell_key, "Y0", 18),
+                                  render_named_output_pin(cell_key, "Y1", 42),
+                                  render_named_output_pin(cell_key, "Y2", 66),
+                                  render_named_output_pin(cell_key, "Y3", 90),
+                              ),
+                              rx.cond(
+                                  is_decoder_2_4,
+                                  rx.fragment(
+                                      render_named_output_pin(cell_key, "Y0", 18),
+                                      render_named_output_pin(cell_key, "Y1", 38),
+                                      render_named_output_pin(cell_key, "Y2", 58),
+                                      render_named_output_pin(cell_key, "Y3", 78),
+                                  ),
+                                  rx.cond(
+                                      is_encoder_4_2,
+                                      rx.fragment(
+                                          render_named_output_pin(cell_key, "A0", 34),
+                                          render_named_output_pin(cell_key, "A1", 64),
+                                      ),
+                                      rx.fragment(),
+                                  ),
+                              ),
+                          ),
+                      ),
                   ),
               ),
           ),
@@ -2299,6 +2553,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                       "border-color": "#b91c1c",
                   },
                   transition="all 0.15s ease",
+                  class_name="terminal-dot",
               ),
               width="18px",
               height="18px",
@@ -2335,12 +2590,16 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
               is_full_adder,
               "130px",
               rx.cond(
-                  is_mux_2_1 | is_demux_1_2,
-                  "120px",
+                  is_mux_4_1 | is_demux_1_4 | is_decoder_2_4 | is_encoder_4_2,
+                  "130px",
                   rx.cond(
-                      is_seven_seg,
-                      "110px",
-                      rx.cond(g_type == "CLK", "110px", "86px"),
+                      is_mux_2_1 | is_demux_1_2,
+                      "120px",
+                      rx.cond(
+                          is_seven_seg,
+                          "110px",
+                          rx.cond(g_type == "CLK", "110px", "86px"),
+                      ),
                   ),
               ),
           ),
@@ -2383,6 +2642,8 @@ def render_wire_path(w: rx.Var) -> rx.Component:
               "data-target-key": w["target_key"],
               "data-slot": w["slot"],
               "data-offset-y": w["offset_y"],
+              "data-offset-x": w["offset_x"],
+              "data-dst-side": w["dst_side"],
               "data-mid-x": w["mid_x"],
               "data-src-x": w["src_x"],
               "data-src-y": w["src_y"],
@@ -2503,6 +2764,23 @@ def index() -> rx.Component:
               #logic-workspace[data-delete-mode="true"] *:active {
                   cursor: crosshair !important;
               }
+
+              .input-pin-bubble.connected-terminal > .terminal-dot,
+              .output-pin-bubble.connected-terminal > .terminal-dot {
+                  opacity: 0 !important;
+                  transform: scale(1) !important;
+              }
+              .input-pin-bubble.connected-terminal:hover > .terminal-dot,
+              .output-pin-bubble.connected-terminal:hover > .terminal-dot {
+                  opacity: 0.32 !important;
+              }
+
+              .output-pin-bubble.wiring-source-active > .terminal-dot {
+                  opacity: 1 !important;
+                  background: #ef4444 !important;
+                  border-color: #b91c1c !important;
+                  transform: scale(1.35) !important;
+              }
           </style>
       """),
       rx.button(
@@ -2519,6 +2797,14 @@ def index() -> rx.Component:
           on_click=rx.call_script(
               "window.__getDragEndData ? window.__getDragEndData() : null",
               callback=State.handle_gate_drag_end,
+          ),
+      ),
+      rx.button(
+          id="view-change-trigger-btn",
+          style={"display": "none"},
+          on_click=rx.call_script(
+              "window.__getViewChangeData ? window.__getViewChangeData() : null",
+              callback=State.handle_view_change,
           ),
       ),
       rx.button(
@@ -2896,6 +3182,10 @@ def index() -> rx.Component:
                       rx.el.option("Full Adder", value="FULL_ADDER"),
                       rx.el.option("2:1 Multiplexer", value="MUX_2_1"),
                       rx.el.option("1:2 Demultiplexer", value="DEMUX_1_2"),
+                      rx.el.option("4:1 Multiplexer", value="MUX_4_1"),
+                      rx.el.option("1:4 Demultiplexer", value="DEMUX_1_4"),
+                      rx.el.option("2→4 Decoder", value="DECODER_2_4"),
+                      rx.el.option("4→2 Encoder", value="ENCODER_4_2"),
                       value=State.selected_msi_menu,
                       on_change=State.set_selected_msi_menu,
                       style={
@@ -3001,9 +3291,18 @@ def index() -> rx.Component:
                   "left": 0,
                   "width": "10000px",
                   "height": "10000px",
-                  "transform": f"translate({State.pan_x}px, {State.pan_y}px)",
+                  "transform": f"translate({State.pan_x}px, {State.pan_y}px) scale({State.zoom})",
                   "transformOrigin": "0 0",
               },
+          ),
+          rx.hstack(
+              rx.button("−", size="1", variant="soft", on_click=rx.call_script("window.__logicZoom ? window.__logicZoom(-0.1) : null", callback=State.handle_view_change), title="Zoom Out"),
+              rx.button("100%", size="1", variant="ghost", on_click=rx.call_script("window.__logicResetZoom ? window.__logicResetZoom() : null", callback=State.handle_view_change), title="Reset to 100%"),
+              rx.button("+", size="1", variant="soft", on_click=rx.call_script("window.__logicZoom ? window.__logicZoom(0.1) : null", callback=State.handle_view_change), title="Zoom In"),
+              rx.button("Fit", size="1", variant="soft", on_click=rx.call_script("window.__logicFit ? window.__logicFit() : null", callback=State.handle_view_change), title="Fit Circuit"),
+              position="absolute", top="14px", right="18px", z_index="50",
+              padding="6px", border="1px solid #cbd5e1", border_radius="8px",
+              bg="rgba(255,255,255,0.94)", box_shadow="0 2px 8px rgba(15,23,42,0.12)", spacing="1",
           ),
           on_context_menu=State.cancel_active_actions,
           on_click=rx.call_script(
@@ -3022,6 +3321,7 @@ def index() -> rx.Component:
               "data-text-placement": State.is_text_placement_mode.to_string(),
               "data-pan-x": State.pan_x,
               "data-pan-y": State.pan_y,
+              "data-zoom": State.zoom,
           },
           style={
               "position": "relative",
@@ -3121,487 +3421,39 @@ def index() -> rx.Component:
               },
           ),
       ),
-      rx.script("""
-            (() => {
-                // UI-001: always rebind this script instance.
-                // Reflex/HMR can replace the page while window-level flags survive,
-                // leaving stale flags with no working listeners.
-                if (window.__logicHandlers) {
-                    const h = window.__logicHandlers;
-                    if (h.onKeyDown) document.removeEventListener("keydown", h.onKeyDown);
-                    if (h.onKeyUp) document.removeEventListener("keyup", h.onKeyUp);
-                    if (h.onPointerDown) document.removeEventListener("pointerdown", h.onPointerDown);
-                    if (h.onPointerMove) document.removeEventListener("pointermove", h.onPointerMove);
-                    if (h.onPointerUp) document.removeEventListener("pointerup", h.onPointerUp);
-                }
-                window.__logicInitialized = true;
-                window.__logicListenersBound = false;
-
-                const GRID_SIZE = 20, GATE_WIDTH = 86;
-                window.__isPanning = false; window.__draggedGate = null; window.__draggedWire = null;
-                
-                // Per-clock runtime. clock_interval is the FULL period,
-                // so the square wave toggles every period / 2.
-                window.__clockRuntime = {};
-
-                window.__getImportedProjectData = () => { const r = window.__importedProjectJson; window.__importedProjectJson = null; return r; };
-
-                if (window.__autoClockInterval) clearInterval(window.__autoClockInterval);
-                window.__autoClockInterval = setInterval(() => {
-                    if (window.__draggedGate || window.__draggedWire || window.__isPanning) return;
-
-                    const now = performance.now();
-                    const liveClockIds = new Set();
-                    const clockCards = document.querySelectorAll('.schematic-gate-card[data-gate-type="CLK"]');
-
-                    clockCards.forEach(card => {
-                        const gateId = card.getAttribute('data-gate-id');
-                        if (!gateId) return;
-                        liveClockIds.add(gateId);
-
-                        const sel = card.querySelector('select');
-                        const inputField = card.querySelector('input[type="text"]');
-                        const isAuto = !!(sel && sel.value === 'auto');
-
-                        let periodSec = parseFloat(inputField ? inputField.value : '1');
-                        if (!Number.isFinite(periodSec)) periodSec = 1.0;
-                        periodSec = Math.max(0.5, Math.min(99.0, periodSec));
-
-                        if (!isAuto) {
-                            delete window.__clockRuntime[gateId];
-                            return;
-                        }
-
-                        const halfPeriodMs = (periodSec * 1000) / 2;
-                        let runtime = window.__clockRuntime[gateId];
-
-                        if (!runtime || Math.abs(runtime.periodSec - periodSec) > 0.0001) {
-                            window.__clockRuntime[gateId] = {
-                                periodSec: periodSec,
-                                lastToggleMs: now
-                            };
-                            return;
-                        }
-
-                        if (now - runtime.lastToggleMs >= halfPeriodMs) {
-                            runtime.lastToggleMs = now;
-                            window.__pendingClockTickKey = gateId;
-                            const btn = document.getElementById("clock-tick-key-btn");
-                            if (btn) {
-                                btn.dispatchEvent(new MouseEvent('click', {
-                                    bubbles: true,
-                                    cancelable: true
-                                }));
-                            }
-                        }
-                    });
-
-                    Object.keys(window.__clockRuntime).forEach(gateId => {
-                        if (!liveClockIds.has(gateId)) {
-                            delete window.__clockRuntime[gateId];
-                        }
-                    });
-                }, 50);
-
-                function getOrthogonalPath(srcX, srcY, dstX, dstY, customMidX) {
-                    const midX = customMidX !== undefined ? customMidX : (srcX + (dstX - srcX) / 2);
-                    if (Math.abs(srcY - dstY) <= 4 && dstX >= srcX + 16 && customMidX === undefined) {
-                        return `M ${srcX} ${srcY} L ${dstX} ${dstY}`;
-                    } else if (dstX >= srcX + 16) {
-                        return `M ${srcX} ${srcY} L ${midX} ${srcY} L ${midX} ${dstY} L ${dstX} ${dstY}`;
-                    } else {
-                        const xOut = srcX + 16, xIn = dstX - 16, midY = (srcY + dstY) / 2;
-                        return `M ${srcX} ${srcY} L ${xOut} ${srcY} L ${xOut} ${midY} L ${xIn} ${midY} L ${xIn} ${dstY} L ${dstX} ${dstY}`;
-                    }
-                }
-                function getGateCoordinates(el) {
-                    if (!el) return { x: 140, y: 80 };
-                    const styleX = parseFloat(el.style.left), styleY = parseFloat(el.style.top);
-                    if (!isNaN(styleX) && !isNaN(styleY)) return { x: styleX, y: styleY };
-                    const vp = document.getElementById("logic-viewport"), vpRect = vp.getBoundingClientRect(), elRect = el.getBoundingClientRect();
-                    return { x: Math.round((elRect.left - vpRect.left) / GRID_SIZE) * GRID_SIZE, y: Math.round((elRect.top - vpRect.top) / GRID_SIZE) * GRID_SIZE };
-                }
-                function getComponentWidthByType(gateType) {
-                    if (gateType === 'FULL_ADDER') return 130;
-                    if (gateType === 'HALF_ADDER' || gateType === 'MUX_2_1' || gateType === 'DEMUX_1_2') return 120;
-                    if (gateType === 'SEVEN_SEG' || gateType === 'CLK') return 110;
-                    return 86;
-                }
-
-                function getOutputPinOffsetFromElement(srcEl, srcKey) {
-                    if (!srcEl) return 30;
-                    const gateType = srcEl.getAttribute('data-gate-type') || '';
-                    const portName = srcKey && srcKey.includes(':') ? srcKey.split(':').slice(1).join(':') : '';
-
-                    if (portName === 'q_bar') {
-                        if (gateType === 'D_FF' || gateType === 'T_FF') return 45;
-                        if (gateType === 'RS_FF' || gateType === 'JK_FF') return 48;
-                    }
-
-                    let selector = '.output-pin-bubble';
-                    if (portName && portName !== 'q_bar') {
-                        selector = `.output-pin-bubble[data-output-port="${portName}"]`;
-                    }
-                    const outputBubble = srcEl.querySelector(selector);
-                    if (outputBubble) {
-                        const attr = outputBubble.getAttribute('data-offset-y');
-                        if (attr !== null && attr !== '') return parseFloat(attr);
-                    }
-
-                    if (gateType === 'D_FF' || gateType === 'T_FF' ||
-                        gateType === 'RS_FF' || gateType === 'JK_FF') return 18;
-                    return 30;
-                }
-
-                function updateAttachedWiresLive(gateId, newX, newY) {
-                    document.querySelectorAll('#logic-svg-layer g').forEach(g => {
-                        const pathHitbox = g.querySelector('path[data-src-key], path[data-target-key]');
-                        if (!pathHitbox) return;
-
-                        const srcKey = pathHitbox.getAttribute('data-src-key') || '';
-                        const targetKey = pathHitbox.getAttribute('data-target-key') || '';
-                        const offsetY = parseFloat(pathHitbox.getAttribute('data-offset-y')) || 30;
-                        const baseSrcKey = srcKey.includes(':') ? srcKey.split(':')[0] : srcKey;
-
-                        let srcX, srcY, dstX, dstY;
-
-                        if (baseSrcKey === gateId) {
-                            const srcEl = document.querySelector(`[data-gate-id="${baseSrcKey}"]`);
-                            if (!srcEl) return;
-                            const gateType = srcEl.getAttribute('data-gate-type') || '';
-                            const srcPinY = getOutputPinOffsetFromElement(srcEl, srcKey);
-                            srcX = newX + getComponentWidthByType(gateType) + 9;
-                            srcY = newY + srcPinY;
-
-                            const targetEl = document.querySelector(`[data-gate-id="${targetKey}"]`);
-                            if (!targetEl) return;
-                            const pos = getGateCoordinates(targetEl);
-                            dstX = pos.x - 9;
-                            dstY = pos.y + offsetY;
-                        } else if (targetKey === gateId) {
-                            dstX = newX - 9;
-                            dstY = newY + offsetY;
-
-                            const srcEl = document.querySelector(`[data-gate-id="${baseSrcKey}"]`);
-                            if (!srcEl) return;
-                            const gateType = srcEl.getAttribute('data-gate-type') || '';
-                            const srcPinY = getOutputPinOffsetFromElement(srcEl, srcKey);
-                            const pos = getGateCoordinates(srcEl);
-                            srcX = pos.x + getComponentWidthByType(gateType) + 9;
-                            srcY = pos.y + srcPinY;
-                        } else {
-                            return;
-                        }
-
-                        const customMidX = parseFloat(pathHitbox.getAttribute('data-mid-x'));
-                        const newPathStr = getOrthogonalPath(
-                            srcX, srcY, dstX, dstY,
-                            Number.isFinite(customMidX) ? customMidX : undefined
-                        );
-                        g.querySelectorAll('path').forEach(p => p.setAttribute('d', newPathStr));
-                    });
-                }
-                function dispatchProxyClick(btnId) {
-                    const btn = document.getElementById(btnId);
-                    if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-                }
-
-                function setupWorkspaceDrop() {
-                    const ws = document.getElementById("logic-workspace");
-                    if (ws) {
-                        const allowedGateTypes = new Set([
-                            "NOT", "AND", "NAND", "OR", "NOR", "XOR", "XNOR",
-                            "INPUT", "OUTPUT", "CLK", "SEVEN_SEG",
-                            "D_FF", "T_FF", "RS_FF", "JK_FF",
-                            "HALF_ADDER", "FULL_ADDER", "MUX_2_1", "DEMUX_1_2"
-                        ]);
-
-                        ws.ondragover = e => {
-                            const types = Array.from(e.dataTransfer.types || []);
-                            if (types.includes("application/x-circuit-gate")) {
-                                e.preventDefault();
-                                e.dataTransfer.dropEffect = "copy";
-                            }
-                        };
-
-                        ws.ondrop = e => {
-                            const gateType = e.dataTransfer.getData(
-                                "application/x-circuit-gate"
-                            );
-                            if (!allowedGateTypes.has(gateType)) {
-                                return;
-                            }
-
-                            e.preventDefault();
-                            e.stopPropagation();
-
-                            const rect = ws.getBoundingClientRect();
-                            const panX = parseFloat(
-                                ws.getAttribute("data-pan-x")
-                            ) || 0;
-                            const panY = parseFloat(
-                                ws.getAttribute("data-pan-y")
-                            ) || 0;
-                            const rawX = e.clientX - rect.left - panX;
-                            const rawY = e.clientY - rect.top - panY;
-                            const snapX = Math.max(
-                                40,
-                                Math.round(
-                                    (rawX - (GATE_WIDTH / 2)) / GRID_SIZE
-                                ) * GRID_SIZE
-                            );
-                            const snapY = Math.max(
-                                20,
-                                Math.round(
-                                    (rawY - 30) / GRID_SIZE
-                                ) * GRID_SIZE
-                            );
-                            const dropBtn = document.getElementById(
-                                "drop-trigger-btn"
-                            );
-                            if (dropBtn) {
-                                dropBtn.setAttribute("data-type", gateType);
-                                dropBtn.setAttribute("data-x", snapX);
-                                dropBtn.setAttribute("data-y", snapY);
-                                dispatchProxyClick("drop-trigger-btn");
-                            }
-                        };
-                    }
-                }
-                // The Reflex workspace may not exist on the first script tick.
-                // Retry briefly and also re-attach if Reflex replaces the workspace node.
-                setupWorkspaceDrop();
-                [50, 100, 250, 500, 1000, 2000].forEach(ms => {
-                    setTimeout(setupWorkspaceDrop, ms);
-                });
-                if (window.__logicWorkspaceObserver) {
-                    window.__logicWorkspaceObserver.disconnect();
-                }
-                window.__logicWorkspaceObserver = new MutationObserver(() => {
-                    setupWorkspaceDrop();
-                });
-                const observerRoot = document.body || document.documentElement;
-                if (observerRoot) {
-                    window.__logicWorkspaceObserver.observe(observerRoot, {
-                        childList: true,
-                        subtree: true
-                    });
-                }
-
-                window.__getDroppedGate = () => {
-                    const btn = document.getElementById("drop-trigger-btn"); if (!btn) return null;
-                    const type = btn.getAttribute("data-type"), x = parseInt(btn.getAttribute("data-x")), y = parseInt(btn.getAttribute("data-y"));
-                    return (!type || isNaN(x) || isNaN(y)) ? null : { type, x, y };
-                };
-                window.__getDragEndData = () => {
-                    const btn = document.getElementById("drag-end-trigger-btn"); if (!btn) return null;
-                    const key = btn.getAttribute("data-key"), x = parseInt(btn.getAttribute("data-x")), y = parseInt(btn.getAttribute("data-y"));
-                    return (!key || isNaN(x) || isNaN(y)) ? null : { key, x, y };
-                };
-                window.__getWireDragEndData = () => { const r = window.__pendingWireDragEnd; window.__pendingWireDragEnd = null; return r; };
-                window.__getDeleteGateData = () => { const r = window.__pendingDeleteGate; window.__pendingDeleteGate = null; return r; };
-                window.__getToggleInputData = () => { const r = window.__pendingToggleInput; window.__pendingToggleInput = null; return r; };
-                window.__getSelectGateData = () => { const r = window.__pendingSelectGate; window.__pendingSelectGate = null; return r; };
-                window.__getClockTickKey = () => { const r = window.__pendingClockTickKey; window.__pendingClockTickKey = null; return r; };
-
-                const onKeyDown = e => {
-                    const ws = document.getElementById("logic-workspace");
-                    const activeEl = document.activeElement, isTyping = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT") && !activeEl.readOnly;
-                    if (e.code === "Space" && !e.repeat && !isTyping) { window.__logicSpaceDown = true; if (ws) ws.style.cursor = ws.getAttribute("data-delete-mode") === "true" ? "crosshair" : "grab"; }
-                    if (isTyping) return;
-                    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); dispatchProxyClick(e.shiftKey ? "redo-trigger-btn" : "undo-trigger-btn"); }
-                    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); dispatchProxyClick("redo-trigger-btn"); }
-                    else if (e.key.toLowerCase() === 'x') { const btn = document.querySelector('button[title*="Delete Mode"]'); if (btn) btn.click(); }
-                    if (e.key === "Escape") { const p = document.getElementById("live-wire-preview"); if (p) p.style.display = "none"; dispatchProxyClick("cancel-action-trigger-btn"); }
-                };
-                const onKeyUp = e => { 
-                    const ws = document.getElementById("logic-workspace");
-                    if (e.code === "Space") { window.__logicSpaceDown = false; if (ws) ws.style.cursor = ws.getAttribute("data-delete-mode") === "true" ? "crosshair" : "default"; } 
-                };
-
-                const onPointerDown = e => {
-                    const ws = document.getElementById("logic-workspace");
-                    if (!ws || !ws.contains(e.target)) return;
-                    window.__lastClientX = e.clientX; window.__lastClientY = e.clientY; window.__wasDraggingGate = false;
-                    
-                    const wireSegment = e.target.closest('.wire-drag-segment');
-                    const pinBubble = e.target.closest('.input-pin-bubble, .output-pin-bubble');
-                    const isDeleteMode = ws.getAttribute("data-delete-mode") === "true";
-
-                    if (wireSegment && !isDeleteMode) {
-                        window.__draggedWire = { wire_id: wireSegment.getAttribute('data-wire-id'), element: wireSegment, startX: e.clientX, baseMidX: parseFloat(wireSegment.getAttribute('data-mid-x')) || 0, srcX: parseFloat(wireSegment.getAttribute('data-src-x')) || 0, srcY: parseFloat(wireSegment.getAttribute('data-src-y')) || 0, dstX: parseFloat(wireSegment.getAttribute('data-dst-x')) || 0, dstY: parseFloat(wireSegment.getAttribute('data-dst-y')) || 0, offsetDx: 0 };
-                        return;
-                    }
-                    if (pinBubble) return;
-
-                    let gateCard = e.target.closest('[data-gate-id]');
-                    if (isDeleteMode && gateCard) {
-                        window.__pendingDeleteGate = { key: gateCard.getAttribute('data-gate-id') }; dispatchProxyClick("delete-gate-trigger-btn"); return;
-                    }
-                    if (e.target.closest('.input-label-field') || e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && !e.target.readOnly)) return;
-                    
-                    const wsPanX = parseFloat(ws.getAttribute("data-pan-x")) || 0, wsPanY = parseFloat(ws.getAttribute("data-pan-y")) || 0;
-                    if (e.button === 1 || (e.button === 0 && window.__logicSpaceDown === true) || !gateCard) {
-                        window.__isPanning = true; window.__startMouseX = e.clientX; window.__startMouseY = e.clientY; window.__startPanX = wsPanX; window.__startPanY = wsPanY; ws.style.cursor = isDeleteMode ? "crosshair" : "grabbing"; return;
-                    }
-                    if (gateCard && e.button === 0) {
-                        e.preventDefault();
-                        const gateId = gateCard.getAttribute('data-gate-id');
-                        window.__selectedGateKey = gateId;
-                        const rect = ws.getBoundingClientRect(), mouseWorldX = (e.clientX - rect.left) - wsPanX, mouseWorldY = (e.clientY - rect.top) - wsPanY, pos = getGateCoordinates(gateCard);
-                        window.__draggedGate = { id: gateId, pointerId: e.pointerId, startX: mouseWorldX, startY: mouseWorldY, startClientX: e.clientX, startClientY: e.clientY, origX: pos.x, origY: pos.y, worldX: pos.x, worldY: pos.y };
-                        gateCard.style.zIndex = "100"; gateCard.style.cursor = isDeleteMode ? "crosshair" : "grabbing";
-                    }
-                };
-
-                const onPointerMove = e => {
-                    const ws = document.getElementById("logic-workspace");
-                    const vp = document.getElementById("logic-viewport");
-                    if (window.__draggedWire) {
-                        const dx = e.clientX - window.__draggedWire.startX; window.__draggedWire.offsetDx = Math.round(dx / GRID_SIZE) * GRID_SIZE;
-                        const newMidX = window.__draggedWire.baseMidX + dx, group = window.__draggedWire.element.closest('g');
-                        if (group) {
-                            const livePath = getOrthogonalPath(window.__draggedWire.srcX, window.__draggedWire.srcY, window.__draggedWire.dstX, window.__draggedWire.dstY, newMidX);
-                            group.querySelectorAll('path').forEach(p => p.setAttribute('d', livePath));
-                        }
-                        return;
-                    }
-                    if (window.__draggedGate && ws) {
-                        const rawDx = Math.abs(e.clientX - window.__draggedGate.startClientX);
-                        const rawDy = Math.abs(e.clientY - window.__draggedGate.startClientY);
-                        if (rawDx + rawDy > 4) window.__wasDraggingGate = true;
-
-                        const wsPanX = parseFloat(ws.getAttribute("data-pan-x")) || 0, wsPanY = parseFloat(ws.getAttribute("data-pan-y")) || 0;
-                        const rect = ws.getBoundingClientRect(), mouseWorldX = (e.clientX - rect.left) - wsPanX, mouseWorldY = (e.clientY - rect.top) - wsPanY;
-                        
-                        const dx = mouseWorldX - window.__draggedGate.startX;
-                        const dy = mouseWorldY - window.__draggedGate.startY;
-                        
-                        let newX = Math.round((window.__draggedGate.origX + dx) / GRID_SIZE) * GRID_SIZE;
-                        let newY = Math.round((window.__draggedGate.origY + dy) / GRID_SIZE) * GRID_SIZE;
-                        newX = Math.max(40, newX); newY = Math.max(20, newY);
-                        window.__draggedGate.worldX = newX; window.__draggedGate.worldY = newY;
-                        
-                        const gateEl = document.querySelector(`[data-gate-id="${window.__draggedGate.id}"]`);
-                        if (gateEl) {
-                            gateEl.style.left = `${newX}px`; gateEl.style.top = `${newY}px`;
-                        }
-                        updateAttachedWiresLive(window.__draggedGate.id, newX, newY);
-                        return;
-                    }
-                    const stateSource = ws ? ws.getAttribute("data-wiring-source") : null, previewPath = document.getElementById("live-wire-preview");
-                    if (stateSource && previewPath && ws) {
-                        const baseSrcKey = stateSource.includes(':') ? stateSource.split(':')[0] : stateSource;
-                        const srcEl = document.querySelector(`[data-gate-id="${baseSrcKey}"]`);
-                        if (srcEl) {
-                            const wsPanX = parseFloat(ws.getAttribute("data-pan-x")) || 0, wsPanY = parseFloat(ws.getAttribute("data-pan-y")) || 0;
-                            const rect = ws.getBoundingClientRect(), mouseWorldX = (e.clientX - rect.left) - wsPanX, mouseWorldY = (e.clientY - rect.top) - wsPanY;
-                            const pos = getGateCoordinates(srcEl);
-                            const gateType = srcEl.getAttribute('data-gate-type') || '';
-                            const pinOffset = getOutputPinOffsetFromElement(srcEl, stateSource);
-                            const gateWidth = getComponentWidthByType(gateType);
-                            previewPath.setAttribute(
-                                'd',
-                                getOrthogonalPath(
-                                    pos.x + gateWidth + 9,
-                                    pos.y + pinOffset,
-                                    mouseWorldX,
-                                    mouseWorldY
-                                )
-                            );
-                            previewPath.style.display = "block";
-                        }
-                    } else if (previewPath) { previewPath.style.display = "none"; }
-                    if (window.__isPanning && vp && ws) {
-                        const curPanX = window.__startPanX + (e.clientX - window.__startMouseX), curPanY = window.__startPanY + (e.clientY - window.__startMouseY);
-                        vp.style.transform = `translate(${curPanX}px, ${curPanY}px)`;
-                        ws.style.backgroundPosition = `${curPanX}px ${curPanY}px`;
-                        window.__currentPanX = curPanX; window.__currentPanY = curPanY; window.__wasPanning = true;
-                    }
-                };
-
-                const onPointerUp = e => {
-                    const ws = document.getElementById("logic-workspace");
-                    const isDeleteMode = ws ? ws.getAttribute("data-delete-mode") === "true" : false;
-                    if (window.__draggedWire) {
-                        if (window.__draggedWire.offsetDx !== 0) {
-                            window.__pendingWireDragEnd = { wire_id: window.__draggedWire.wire_id, offset_dx: window.__draggedWire.offsetDx };
-                            dispatchProxyClick("wire-drag-end-trigger-btn");
-                        }
-                        window.__draggedWire = null; return;
-                    }
-                    if (window.__draggedGate) {
-                        const gateEl = document.querySelector(`[data-gate-id="${window.__draggedGate.id}"]`);
-                        if (gateEl) {
-                            gateEl.style.zIndex = "10"; gateEl.style.cursor = isDeleteMode ? "crosshair" : "grab";
-                        }
-                        const deleteZone = document.getElementById("canvas-delete-zone");
-                        let droppedInDelete = false;
-                        if (deleteZone && gateEl) {
-                            const dzRect = deleteZone.getBoundingClientRect(), gateRect = gateEl.getBoundingClientRect();
-                            droppedInDelete = !(dzRect.right < gateRect.left || dzRect.left > gateRect.right || dzRect.bottom < gateRect.top || dzRect.bottom > gateRect.bottom);
-                        }
-                        if (droppedInDelete) {
-                            window.__pendingDeleteGate = { key: window.__draggedGate.id }; window.__draggedGate = null; dispatchProxyClick("delete-gate-trigger-btn"); return;
-                        }
-                        const gateId = window.__draggedGate.id, gateType = gateEl ? gateEl.getAttribute("data-gate-type") : "";
-                        if (window.__wasDraggingGate) {
-                            const dragEndBtn = document.getElementById("drag-end-trigger-btn");
-                            if (dragEndBtn) { dragEndBtn.setAttribute("data-key", gateId); dragEndBtn.setAttribute("data-x", window.__draggedGate.worldX); dragEndBtn.setAttribute("data-y", window.__draggedGate.worldY); dispatchProxyClick("drag-end-trigger-btn"); }
-                        } else {
-                            if (gateType === "INPUT" || gateType === "CLK") { window.__pendingToggleInput = { key: gateId }; dispatchProxyClick("toggle-input-trigger-btn"); }
-                            else { window.__pendingSelectGate = { key: gateId }; dispatchProxyClick("select-gate-trigger-btn"); }
-                        }
-                        window.__draggedGate = null;
-                    }
-                    if (window.__isPanning) {
-                        window.__isPanning = false; if (ws) ws.style.cursor = isDeleteMode ? "crosshair" : "default";
-                        if (window.__wasPanning) {
-                            window.__pendingPanData = { panX: window.__currentPanX, panY: window.__currentPanY };
-                        }
-                    }
-                };
-
-                document.addEventListener("keydown", onKeyDown);
-                document.addEventListener("keyup", onKeyUp);
-                document.addEventListener("pointerdown", onPointerDown);
-                document.addEventListener("pointermove", onPointerMove);
-                document.addEventListener("pointerup", onPointerUp);
-
-                // Keep exact handler references so a Reflex remount/HMR execution can
-                // remove stale listeners before installing a fresh set.
-                window.__logicHandlers = {
-                    onKeyDown,
-                    onKeyUp,
-                    onPointerDown,
-                    onPointerMove,
-                    onPointerUp
-                };
-                window.__logicListenersBound = true;
-
-                window.__calcCanvasClick = () => {
-                    const ws = document.getElementById("logic-workspace");
-                    if (window.__wasPanning) { window.__wasPanning = false; return null; }
-                    if (!ws) return null;
-                    const hit = document.elementFromPoint(window.__lastClientX, window.__lastClientY);
-                    if (hit && hit.closest('.canvas-text-box, .schematic-gate-card, textarea, .input-label-field, select, input, button, .input-pin-bubble, .output-pin-bubble')) return null;
-                    const rect = ws.getBoundingClientRect(), panX = parseFloat(ws.getAttribute("data-pan-x")) || 0, panY = parseFloat(ws.getAttribute("data-pan-y")) || 0;
-                    const rawX = window.__lastClientX - rect.left - panX, rawY = window.__lastClientY - rect.top - panY;
-                    return {
-                        x: Math.max(40, Math.round((rawX - (GATE_WIDTH / 2)) / GRID_SIZE) * GRID_SIZE),
-                        y: Math.max(20, Math.round((rawY - 30) / GRID_SIZE) * GRID_SIZE),
-                        text_x: Math.max(20, Math.round(rawX / GRID_SIZE) * GRID_SIZE),
-                        text_y: Math.max(20, Math.round(rawY / GRID_SIZE) * GRID_SIZE)
-                    };
-                };
-                window.__getPanData = () => { const r = window.__pendingPanData; window.__pendingPanData = null; return r; };
-            })();
-        """),
+      rx.box(
+          id="logic-interaction-bootstrap",
+          width="0px",
+          height="0px",
+          overflow="hidden",
+          on_mount=rx.call_script(
+              """
+              (() => {
+                  const tryReady = () => {
+                      if (window.__logicEnsureReady) {
+                          window.__logicEnsureReady();
+                          return true;
+                      }
+                      return false;
+                  };
+                  if (!tryReady()) {
+                      [50, 100, 250, 500, 1000, 2000].forEach(ms => {
+                          setTimeout(tryReady, ms);
+                      });
+                  }
+              })();
+              """
+          ),
+      ),
       direction="row",
       width="100vw",
       height="100vh",
   )
 
 
-app = rx.App()
+app = rx.App(
+    head_components=[
+        rx.script(src="/logic_interactions.js"),
+    ],
+)
 app.add_page(index)
