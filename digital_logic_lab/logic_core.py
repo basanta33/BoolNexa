@@ -42,6 +42,22 @@ MSI_LSI_DEFS: dict[str, ComponentDef] = {
         "height": 90,
         "primary_output": "SUM",
     },
+    "HALF_SUBTRACTOR": {
+        "label": "HALF SUBTRACTOR",
+        "inputs": [("A", 25), ("B", 50)],
+        "outputs": [("DIFF", 25), ("BORROW", 50)],
+        "width": 130,
+        "height": 70,
+        "primary_output": "DIFF",
+    },
+    "FULL_SUBTRACTOR": {
+        "label": "FULL SUBTRACTOR",
+        "inputs": [("A", 22), ("B", 45), ("BIN", 68)],
+        "outputs": [("DIFF", 30), ("BOUT", 60)],
+        "width": 140,
+        "height": 90,
+        "primary_output": "DIFF",
+    },
     "MUX_2_1": {
         "label": "2:1 MUX",
         "inputs": [("I0", 22), ("I1", 48), ("S", 68)],
@@ -181,13 +197,17 @@ def get_input_pin_offset(gate_type: str, idx: int, num_inputs: int) -> int:
 
 def get_input_pin_position(gate_type: str, idx: int, num_inputs: int) -> tuple[str, int, int]:
     """Return the actual component-edge connection point for an input pin."""
-    bottom: dict[str, dict[int, int]] = {
+    top: dict[str, dict[int, int]] = {
         "MUX_2_1": {3: 60},
         "DEMUX_1_2": {2: 60},
+    }
+    bottom: dict[str, dict[int, int]] = {
         "MUX_4_1": {5: 50, 6: 80},
         "DEMUX_1_4": {2: 50, 3: 80},
         "DECODER_2_4": {1: 50, 2: 80},
     }
+    if gate_type in top and idx in top[gate_type]:
+        return ("top", top[gate_type][idx], 0)
     if gate_type in bottom and idx in bottom[gate_type]:
         height = int(MSI_LSI_DEFS[gate_type]["height"])
         return ("bottom", bottom[gate_type][idx], height)
@@ -298,7 +318,14 @@ def evaluate_circuit(gates: dict) -> dict:
             if g_type in ["INPUT", "CLK"]:
                 continue
 
-            num_in = get_component_input_count(g_type)
+            # Basic AND/NAND/OR/NOR gates have a user-selectable input count.
+            # All other components retain their fixed definition from the registry.
+            if g_type in {"AND", "NAND", "OR", "NOR"}:
+                num_in = normalize_basic_gate_input_count(
+                    g_type, int(g.get("num_inputs", get_component_input_count(g_type)))
+                )
+            else:
+                num_in = get_component_input_count(g_type)
 
             input_vals = []
             for idx in range(1, num_in + 1):
@@ -375,6 +402,24 @@ def evaluate_circuit(gates: dict) -> dict:
                 new_outputs = {"SUM": sum_val, "COUT": cout_val}
                 new_val = sum_val
                 new_val_bar = 1 - sum_val
+            elif g_type == "HALF_SUBTRACTOR":
+                a_val = input_vals[0] if len(input_vals) > 0 else 0
+                b_val = input_vals[1] if len(input_vals) > 1 else 0
+                diff_val = a_val ^ b_val
+                borrow_val = (1 - a_val) & b_val
+                new_outputs = {"DIFF": diff_val, "BORROW": borrow_val}
+                new_val = diff_val
+                new_val_bar = 1 - diff_val
+            elif g_type == "FULL_SUBTRACTOR":
+                a_val = input_vals[0] if len(input_vals) > 0 else 0
+                b_val = input_vals[1] if len(input_vals) > 1 else 0
+                bin_val = input_vals[2] if len(input_vals) > 2 else 0
+                axb = a_val ^ b_val
+                diff_val = axb ^ bin_val
+                bout_val = ((1 - a_val) & b_val) | ((1 - axb) & bin_val)
+                new_outputs = {"DIFF": diff_val, "BOUT": bout_val}
+                new_val = diff_val
+                new_val_bar = 1 - diff_val
             elif g_type == "MUX_2_1":
                 i0_val = input_vals[0] if len(input_vals) > 0 else 0
                 i1_val = input_vals[1] if len(input_vals) > 1 else 0

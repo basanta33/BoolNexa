@@ -2,7 +2,6 @@
 
 import copy
 import json
-import re
 import reflex as rx
 
 
@@ -70,84 +69,6 @@ class State(rx.State):
   zoom: float = 1.0
 
   # Email registration required before project saving.
-  registration_email: str = ""
-  registered_email: str = ""
-  registration_error: str = ""
-  is_registered: bool = False
-
-  def set_registration_email(self, value: str):
-    self.registration_email = value.strip()
-    self.registration_error = ""
-    if self.registered_email and self.registration_email != self.registered_email:
-      self.is_registered = False
-
-  def register_email(self):
-    email = self.registration_email.strip()
-    valid = bool(
-        re.fullmatch(
-            r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
-            r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-            r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+",
-            email,
-        )
-    )
-    if not valid or len(email) > 254:
-      self.registered_email = ""
-      self.is_registered = False
-      self.registration_error = "Enter a valid email address."
-      return
-
-    self.registered_email = email
-    self.is_registered = True
-    self.registration_error = ""
-
-  # Truth table modal / state
-  is_truth_table_open: bool = False
-  truth_table_rows: list[dict[str, str]] = []
-
-  def toggle_truth_table(self):
-    self.is_truth_table_open = not self.is_truth_table_open
-    if self.is_truth_table_open:
-      self.generate_truth_table()
-
-  def generate_truth_table(self):
-    inputs = [
-        k for k, g in self.gates.items() if g.get("type") in ["INPUT", "CLK"]
-    ]
-    outputs = [k for k, g in self.gates.items() if g.get("type") == "OUTPUT"]
-    if not inputs or not outputs:
-      self.truth_table_rows = [{
-          "info": (
-              "Circuit needs at least 1 Input and 1 Output to build a truth"
-              " table."
-          )
-      }]
-      return
-
-    num_inputs = len(inputs)
-    rows = []
-    original_states = {k: self.gates[k]["value"] for k in inputs}
-
-    for i in range(2**num_inputs):
-      sim_gates = copy.deepcopy(self.gates)
-      row_data = {}
-      for idx, inp_key in enumerate(inputs):
-        bit = (i >> (num_inputs - 1 - idx)) & 1
-        sim_gates[inp_key]["value"] = bit
-        row_data[sim_gates[inp_key].get("label", inp_key)] = str(bit)
-
-      evaluated_sim = evaluate_circuit(sim_gates)
-      for out_key in outputs:
-        out_val = evaluated_sim.get(out_key, {}).get("value", 0)
-        row_data[evaluated_sim[out_key].get("label", out_key)] = str(out_val)
-
-      rows.append(row_data)
-
-    for k, v in original_states.items():
-      self.gates[k]["value"] = v
-
-    self.truth_table_rows = rows
-
   def import_project_data(self, data: dict):
     if not data or not isinstance(data, dict):
       return
@@ -254,6 +175,74 @@ class State(rx.State):
     self.annotations = nxt.get("annotations", {})
     self.annotation_keys = nxt.get("annotation_keys", [])
     self.run_circuit_evaluation(self.gates, record_history=False)
+
+  def copy_selected_gate(self):
+    """Copy the selected component configuration without copying its wires."""
+    key = self.selected_gate_key
+    if not key or key not in self.gates:
+      return
+
+    copied = copy.deepcopy(self.gates[key])
+
+    # Connections belong to the circuit graph, not to the component template.
+    for field in list(copied):
+      if field.startswith("input") and field.endswith("_src"):
+        copied[field] = ""
+      if field.startswith("_connected_port_"):
+        del copied[field]
+    copied.pop("_has_output_connection", None)
+
+    self.copied_gate = copied
+
+  def paste_copied_gate(self):
+    """Paste the copied component 30 px down/right with no attached wires."""
+    if not self.copied_gate:
+      return
+
+    gate = copy.deepcopy(self.copied_gate)
+    gate_type = str(gate.get("type", ""))
+    if gate_type not in set(SUPPORTED_GATE_TYPES):
+      return
+
+    self.push_undo_state()
+    key = self.generate_node_key(gate_type)
+
+    gate["x"] = int(gate.get("x", 140)) + 30
+    gate["y"] = int(gate.get("y", 80)) + 30
+    gate["prev_clk"] = 0
+
+    for field in list(gate):
+      if field.startswith("input") and field.endswith("_src"):
+        gate[field] = ""
+      if field.startswith("_connected_port_"):
+        del gate[field]
+    gate.pop("_has_output_connection", None)
+
+    if gate_type in {"INPUT", "OUTPUT"}:
+      gate["label"] = self.get_next_io_label(gate_type)
+    elif gate_type == "CLK":
+      gate["label"] = "CLK"
+
+    updated = copy.deepcopy(self.gates)
+    updated[key] = gate
+    self.gate_keys = [*self.gate_keys, key]
+    self.selected_gate_key = key
+    self.selected_gate_type = ""
+    self.wiring_source = ""
+
+    # Reuse the pasted location for repeated Ctrl+V, producing a visible cascade.
+    self.copied_gate = copy.deepcopy(gate)
+    self.run_circuit_evaluation(updated, record_history=False)
+
+  def duplicate_selected_gate(self):
+    """Ctrl+D convenience: copy and immediately paste the selected component."""
+    self.copy_selected_gate()
+    self.paste_copied_gate()
+
+  def delete_selected_gate(self):
+    key = self.selected_gate_key
+    if key and key in self.gates:
+      self.delete_gate(key)
 
   def toggle_delete_mode(self):
     self.is_delete_mode = not self.is_delete_mode
@@ -534,6 +523,17 @@ class State(rx.State):
     if not data or not isinstance(data, dict):
       return
 
+    # Empty workbench click: clear only the selected placed component.
+    # This does not affect wiring mode, gate-placement mode, wire dragging,
+    # or any circuit state.
+    if (
+        bool(data.get("blank_canvas", False))
+        and not self.is_text_placement_mode
+        and not self.selected_gate_type
+    ):
+      self.selected_gate_key = ""
+      return
+
     if self.is_text_placement_mode:
       self.place_text_annotation(
           int(data.get("text_x", data.get("x", 140))),
@@ -728,6 +728,8 @@ class State(rx.State):
   def recalculate_all_wires(self):
     new_wires = []
     source_branch_counts: dict[str, int] = {}
+    connected_source_bases: set[str] = set()
+    connected_named_outputs: dict[str, set[str]] = {}
 
     for target_key in self.gate_keys:
       g_data = self.gates.get(target_key, {})
@@ -758,13 +760,82 @@ class State(rx.State):
         if base_src_key not in self.gates:
           continue
 
+        connected_source_bases.add(base_src_key)
+        if port_name:
+          connected_named_outputs.setdefault(base_src_key, set()).add(port_name)
         src_gate = self.gates[base_src_key]
         src_type = src_gate.get("type", "")
-        src_pin_y_offset = get_output_pin_offset(src_type, port_name)
-        src_x = src_gate["x"] + get_component_width(src_type)
+
+        # Variable basic gates are physically 20 px taller for every extra input.
+        # Their SVG output lead and clickable output terminal are both centered
+        # on that dynamic height, so the persisted wire must start at that exact
+        # same Y coordinate.  Using the fixed default (30 px) creates a visible
+        # break for 3-6 input gates.
+        if src_type in {"AND", "NAND", "OR", "NOR"}:
+          src_count = max(
+              2,
+              min(
+                  6,
+                  int(
+                      src_gate.get(
+                          "num_inputs", get_component_input_count(src_type)
+                      )
+                  ),
+              ),
+          )
+          src_pin_y_offset = 10 * (src_count + 1)
+        else:
+          src_pin_y_offset = get_output_pin_offset(src_type, port_name)
+
+        # INPUT uses a compact 66px visible block centered inside the
+        # historical 86px interaction envelope.  Its visible right edge is
+        # therefore x + 10 + 66 = x + 76.  Start the wire there so there is
+        # no 10px gap after the INPUT block.
+        if src_type == "INPUT":
+          src_x = src_gate["x"] + 76
+        else:
+          src_x = src_gate["x"] + get_component_width(src_type)
         src_y = src_gate["y"] + src_pin_y_offset
 
-        dst_side, dst_pin_x_offset, dst_pin_y_offset = get_input_pin_position(g_type, idx, num_in)
+        # The variable basic-gate SVG leads and their clickable pin hitboxes are
+        # positioned at 20, 40, 60 ... px.  Use those exact coordinates for the
+        # routed wire endpoint too, so the routed wire overlaps the visible SVG
+        # lead without a gap.
+        if g_type == "MUX_2_1" and idx == 3:
+          dst_side = "top"
+          dst_pin_x_offset = 60
+          dst_pin_y_offset = 0
+        elif g_type == "DEMUX_1_2" and idx == 2:
+          dst_side = "top"
+          dst_pin_x_offset = 60
+          dst_pin_y_offset = 0
+        elif g_type in {"AND", "NAND", "OR", "NOR"}:
+          dst_side = "left"
+          dst_pin_x_offset = 0
+          dst_pin_y_offset = 20 * idx
+        elif g_type in {"D_FF", "T_FF"}:
+          # Match vec_d_ff()/vec_t_ff() input lead coordinates exactly.
+          dst_side = "left"
+          dst_pin_x_offset = 0
+          dst_pin_y_offset = 15 if idx == 1 else 45
+        elif g_type in {"RS_FF", "JK_FF"}:
+          # Match vec_rs_ff()/vec_jk_ff() input lead coordinates exactly.
+          dst_side = "left"
+          dst_pin_x_offset = 0
+          dst_pin_y_offset = {1: 15, 2: 33, 3: 51}.get(idx, 33)
+        elif g_type == "OUTPUT":
+          # OUTPUT is also a compact 66px visible block centered in the
+          # 86px envelope.  Its visible left edge is x + 10.
+          dst_side = "left"
+          dst_pin_x_offset = 10
+          dst_pin_y_offset = 30
+        else:
+          (
+              dst_side,
+              dst_pin_x_offset,
+              dst_pin_y_offset,
+          ) = get_input_pin_position(g_type, idx, num_in)
+
         dst_x = target_x + dst_pin_x_offset
         dst_y = target_y + dst_pin_y_offset
 
@@ -817,6 +888,22 @@ class State(rx.State):
             "is_branched": "true" if branch_idx > 0 else "false",
         })
 
+    # Persist only lightweight visual connection flags.  The terminal
+    # hit-area remains active after the dot is hidden, so fan-out is still
+    # possible from an already connected source.
+    updated_gates = copy.deepcopy(self.gates)
+    for gate_key, gate in updated_gates.items():
+      gate["_has_output_connection"] = gate_key in connected_source_bases
+
+      # Clear previous per-port connection flags, then rebuild them from
+      # actual wires. These are visual-only flags and do not affect logic.
+      for field in list(gate):
+        if field.startswith("_connected_port_"):
+          del gate[field]
+      for port_name in connected_named_outputs.get(gate_key, set()):
+        gate[f"_connected_port_{port_name}"] = True
+
+    self.gates = updated_gates
     self.wires_list = new_wires
 
 
@@ -826,27 +913,19 @@ class State(rx.State):
 def vec_input(
     is_on: rx.Var, label: rx.Var = "A", cell_key: str = ""
 ) -> rx.Component:
+  """Compact INPUT symbol inside the existing 86x60 connection envelope."""
   return rx.box(
-      rx.vstack(
+      rx.box(
           rx.hstack(
-              rx.text(
-                  "IN:",
-                  font_size="9px",
-                  font_weight="900",
-                  color="#64748b",
-                  letter_spacing="0.5px",
-              ),
               rx.cond(
                   cell_key != "",
                   rx.el.input(
                       value=label,
-                      on_change=lambda val, k=cell_key: State.set_gate_label(
-                          k, val
-                      ),
+                      on_change=lambda val, k=cell_key: State.set_gate_label(k, val),
                       max_length=1,
                       class_name="input-label-field",
                       style={
-                          "width": "22px",
+                          "width": "20px",
                           "height": "18px",
                           "text_align": "center",
                           "font_size": "11px",
@@ -860,40 +939,41 @@ def vec_input(
                           "padding": "0",
                       },
                   ),
-                  rx.text(label, font_size="10px", font_weight="bold", color="#0f172a"),
+                  rx.text(label, font_size="10px", font_weight="900", color="#0f172a"),
               ),
-              spacing="1",
-              align_items="center",
-              justify="center",
-          ),
-          rx.hstack(
               rx.box(
-                  width="10px",
-                  height="10px",
+                  width="9px",
+                  height="9px",
                   border_radius="50%",
                   bg=rx.cond(is_on, "#ef4444", "#64748b"),
-                  box_shadow=rx.cond(is_on, "0 0 8px #ef4444", "none"),
-                  border="1.5px solid #0f172a",
+                  box_shadow=rx.cond(is_on, "0 0 6px #ef4444", "none"),
+                  border="1.25px solid #0f172a",
               ),
               rx.text(
-                  rx.cond(is_on, "1 (HIGH)", "0 (LOW)"),
-                  font_size="10px",
-                  font_weight="800",
+                  rx.cond(is_on, "1", "0"),
+                  font_size="11px",
+                  font_weight="900",
+                  color=rx.cond(is_on, "#b91c1c", "#334155"),
               ),
-              spacing="1",
+              spacing="2",
               align_items="center",
               justify="center",
           ),
-          spacing="1",
-          align_items="center",
-          justify="center",
+          width="66px",
+          height="40px",
+          border_radius="7px",
+          border="1.5px solid #0f172a",
+          bg=rx.cond(is_on, "#fef2f2", "#ffffff"),
+          box_shadow="0 2px 4px -1px rgba(0,0,0,0.08)",
+          style={
+              "display": "flex",
+              "align_items": "center",
+              "justify_content": "center",
+          },
       ),
       width="86px",
       height="60px",
-      border_radius="8px",
-      border="1.5px solid #0f172a",
-      bg=rx.cond(is_on, "#fef2f2", "#ffffff"),
-      box_shadow="0 4px 6px -1px rgba(0,0,0,0.05)",
+      bg="transparent",
       style={
           "display": "flex",
           "align_items": "center",
@@ -905,27 +985,19 @@ def vec_input(
 def vec_output(
     is_on: rx.Var, label: rx.Var = "Q", cell_key: str = ""
 ) -> rx.Component:
+  """Compact OUTPUT symbol inside the existing 86x60 connection envelope."""
   return rx.box(
-      rx.vstack(
+      rx.box(
           rx.hstack(
-              rx.text(
-                  "OUT:",
-                  font_size="9px",
-                  font_weight="900",
-                  color="#64748b",
-                  letter_spacing="0.5px",
-              ),
               rx.cond(
                   cell_key != "",
                   rx.el.input(
                       value=label,
-                      on_change=lambda val, k=cell_key: State.set_gate_label(
-                          k, val
-                      ),
+                      on_change=lambda val, k=cell_key: State.set_gate_label(k, val),
                       max_length=1,
                       class_name="input-label-field",
                       style={
-                          "width": "22px",
+                          "width": "20px",
                           "height": "18px",
                           "text_align": "center",
                           "font_size": "11px",
@@ -939,53 +1011,49 @@ def vec_output(
                           "padding": "0",
                       },
                   ),
-                  rx.text(label, font_size="10px", font_weight="bold", color="#0f172a"),
+                  rx.text(label, font_size="10px", font_weight="900", color="#0f172a"),
               ),
-              spacing="1",
-              align_items="center",
-              justify="center",
-          ),
-          rx.hstack(
               rx.box(
-                  width="10px",
-                  height="10px",
+                  width="9px",
+                  height="9px",
                   border_radius="50%",
                   bg=rx.cond(is_on, "#ef4444", "#94a3b8"),
-                  box_shadow=rx.cond(
-                      is_on,
-                      "0 0 10px #ef4444",
-                      "inset 0 1px 2px rgba(0,0,0,0.3)",
-                  ),
+                  box_shadow=rx.cond(is_on, "0 0 6px #ef4444", "none"),
                   border=rx.cond(
-                      is_on, "1.5px solid #b91c1c", "1.5px solid #64748b"
+                      is_on, "1.25px solid #b91c1c", "1.25px solid #64748b"
                   ),
               ),
               rx.text(
-                  rx.cond(is_on, "1 (ON)", "0 (OFF)"),
-                  font_size="10px",
-                  font_weight="800",
+                  rx.cond(is_on, "1", "0"),
+                  font_size="11px",
+                  font_weight="900",
+                  color=rx.cond(is_on, "#b91c1c", "#334155"),
               ),
-              spacing="1",
+              spacing="2",
               align_items="center",
               justify="center",
           ),
-          spacing="1",
-          align_items="center",
-          justify="center",
+          width="66px",
+          height="40px",
+          border_radius="7px",
+          border="1.5px solid #0f172a",
+          bg=rx.cond(is_on, "#fef2f2", "#f8fafc"),
+          box_shadow="0 2px 4px -1px rgba(0,0,0,0.08)",
+          style={
+              "display": "flex",
+              "align_items": "center",
+              "justify_content": "center",
+          },
       ),
       width="86px",
       height="60px",
-      border_radius="8px",
-      border="1.5px solid #0f172a",
-      bg=rx.cond(is_on, "#fef2f2", "#f8fafc"),
-      box_shadow="0 4px 6px -1px rgba(0,0,0,0.05)",
+      bg="transparent",
       style={
           "display": "flex",
           "align_items": "center",
           "justify_content": "center",
       },
   )
-
 
 def vec_clock(
     is_on: rx.Var, clock_mode: rx.Var, clock_interval, cell_key: str
@@ -1293,60 +1361,96 @@ def vec_and_ieee(invert=False, num_inputs=2) -> rx.Component:
 
 
 def vec_or_ieee(invert=False, xor=False, num_inputs=2) -> rx.Component:
-  """IEEE OR/NOR/XOR/XNOR symbol sized to the selected number of inputs."""
+  """ANSI-style OR/NOR/XOR/XNOR symbol with dynamic basic-gate inputs."""
   count = 2 if xor else max(2, min(6, int(num_inputs)))
   height = 20 * (count + 1)
   center_y = height // 2
+
   top = 10
   bottom = height - 10
-  right = 62
-  bubble_x = 66
-  output_start = 70 if invert else right
 
+  # Gate body geometry.
+  left_tip_x = 15
+  nose_x = 62
+  rear_control_x = 28
+
+  # Output bubble / lead geometry.
+  bubble_x = 67
+  output_start = 72 if invert else nose_x
+  output_end = 86
+
+  # Input leads use the exact same Y positions as recalculate_all_wires():
+  # 20, 40, 60, 80, 100, 120 px.
   leads = [
       rx.el.svg.line(
-          x1="0", y1=str(20 * idx), x2="18", y2=str(20 * idx),
-          stroke="#0f172a", stroke_width="2.5",
+          x1="0",
+          y1=str(20 * idx),
+          x2="19",
+          y2=str(20 * idx),
+          stroke="#0f172a",
+          stroke_width="2.5",
+          stroke_linecap="round",
       )
       for idx in range(1, count + 1)
   ]
 
   parts = []
+
+  # XOR / XNOR extra curved input line.
   if xor:
     parts.append(
         rx.el.svg.path(
-            d=f"M 9 {top} Q 22 {center_y} 9 {bottom}",
-            fill="none", stroke="#0f172a", stroke_width="2.5",
+            d=(
+                f"M 8 {top} "
+                f"Q {rear_control_x - 2} {center_y} 8 {bottom}"
+            ),
+            fill="none",
+            stroke="#0f172a",
+            stroke_width="2.5",
+            stroke_linecap="round",
         )
     )
 
-  parts.extend([
-      rx.el.svg.path(
-          d=f"M 14 {top} Q 27 {center_y} 14 {bottom}",
-          fill="none", stroke="#0f172a", stroke_width="2.5",
-      ),
+  # Standard ANSI OR body:
+  # - concave curved input side
+  # - convex top/bottom arcs
+  # - pointed output nose
+  parts.append(
       rx.el.svg.path(
           d=(
-              f"M 14 {top} "
-              f"Q 45 {top} {right} {center_y} "
-              f"Q 45 {bottom} 14 {bottom}"
+              f"M {left_tip_x} {top} "
+              f"Q 43 {top} {nose_x} {center_y} "
+              f"Q 43 {bottom} {left_tip_x} {bottom} "
+              f"Q {rear_control_x} {center_y} {left_tip_x} {top} Z"
           ),
-          fill="#ffffff", stroke="#0f172a", stroke_width="2.5",
-      ),
-  ])
+          fill="#ffffff",
+          stroke="#0f172a",
+          stroke_width="2.5",
+          stroke_linejoin="round",
+      )
+  )
 
   if invert:
     parts.append(
         rx.el.svg.circle(
-            cx=str(bubble_x), cy=str(center_y), r="4",
-            fill="#ffffff", stroke="#0f172a", stroke_width="2.5",
+            cx=str(bubble_x),
+            cy=str(center_y),
+            r="4",
+            fill="#ffffff",
+            stroke="#0f172a",
+            stroke_width="2.5",
         )
     )
 
   parts.append(
       rx.el.svg.line(
-          x1=str(output_start), y1=str(center_y), x2="86", y2=str(center_y),
-          stroke="#0f172a", stroke_width="2.5",
+          x1=str(output_start),
+          y1=str(center_y),
+          x2=str(output_end),
+          y2=str(center_y),
+          stroke="#0f172a",
+          stroke_width="2.5",
+          stroke_linecap="round",
       )
   )
 
@@ -1597,6 +1701,54 @@ def vec_full_adder() -> rx.Component:
   )
 
 
+def vec_half_subtractor() -> rx.Component:
+  return rx.el.svg(
+      rx.el.svg.rect(
+          x="10", y="5", width="100", height="60", rx="5",
+          fill="#ffffff", stroke="#0f172a", stroke_width="2",
+      ),
+      rx.el.svg.text(
+          "HALF SUB", x="60", y="18", text_anchor="middle",
+          font_size="8px", font_weight="bold", fill="#0f172a",
+      ),
+      rx.el.svg.text("A", x="16", y="29", font_size="8px", font_weight="bold"),
+      rx.el.svg.text("B", x="16", y="54", font_size="8px", font_weight="bold"),
+      rx.el.svg.text("DIFF", x="82", y="29", font_size="7px", font_weight="bold"),
+      rx.el.svg.text("BOR", x="84", y="54", font_size="7px", font_weight="bold"),
+      rx.el.svg.line(x1="0", y1="25", x2="10", y2="25", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="0", y1="50", x2="10", y2="50", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="110", y1="25", x2="130", y2="25", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="110", y1="50", x2="130", y2="50", stroke="#0f172a", stroke_width="2"),
+      view_box="0 0 130 70", width="130px", height="70px",
+      style={"pointerEvents": "none"},
+  )
+
+
+def vec_full_subtractor() -> rx.Component:
+  return rx.el.svg(
+      rx.el.svg.rect(
+          x="10", y="5", width="110", height="78", rx="5",
+          fill="#ffffff", stroke="#0f172a", stroke_width="2",
+      ),
+      rx.el.svg.text(
+          "FULL SUB", x="65", y="18", text_anchor="middle",
+          font_size="8px", font_weight="bold", fill="#0f172a",
+      ),
+      rx.el.svg.text("A", x="16", y="27", font_size="8px", font_weight="bold"),
+      rx.el.svg.text("B", x="16", y="50", font_size="8px", font_weight="bold"),
+      rx.el.svg.text("Bin", x="16", y="73", font_size="7px", font_weight="bold"),
+      rx.el.svg.text("DIFF", x="91", y="35", font_size="7px", font_weight="bold"),
+      rx.el.svg.text("Bout", x="91", y="65", font_size="7px", font_weight="bold"),
+      rx.el.svg.line(x1="0", y1="22", x2="10", y2="22", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="0", y1="45", x2="10", y2="45", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="0", y1="68", x2="10", y2="68", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="120", y1="30", x2="140", y2="30", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="120", y1="60", x2="140", y2="60", stroke="#0f172a", stroke_width="2"),
+      view_box="0 0 140 90", width="140px", height="90px",
+      style={"pointerEvents": "none"},
+  )
+
+
 def vec_mux_2_1() -> rx.Component:
   # Conventional multiplexer wedge/trapezoid.
   return rx.el.svg(
@@ -1605,16 +1757,15 @@ def vec_mux_2_1() -> rx.Component:
           fill="#ffffff", stroke="#0f172a", stroke_width="2",
       ),
       rx.el.svg.text(
-          "2:1 MUX", x="57", y="18", text_anchor="middle",
+          "2:1 MUX", x="57", y="28", text_anchor="middle",
           font_size="8px", font_weight="bold", fill="#0f172a",
       ),
       rx.el.svg.text("I0", x="25", y="28", font_size="7px", font_weight="bold"),
       rx.el.svg.text("I1", x="25", y="54", font_size="7px", font_weight="bold"),
-      rx.el.svg.text("S", x="60", y="72", text_anchor="middle", font_size="7px", font_weight="bold"),
       rx.el.svg.text("Y", x="82", y="44", font_size="8px", font_weight="bold"),
       rx.el.svg.line(x1="0", y1="22", x2="21", y2="22", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="0", y1="48", x2="21", y2="48", stroke="#0f172a", stroke_width="2"),
-      rx.el.svg.line(x1="60", y1="62", x2="60", y2="80", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="60", y1="0", x2="60", y2="10", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="94", y1="40", x2="120", y2="40", stroke="#0f172a", stroke_width="2"),
       view_box="0 0 120 80", width="120px", height="80px",
       style={"pointerEvents": "none"},
@@ -1629,15 +1780,14 @@ def vec_demux_1_2() -> rx.Component:
           fill="#ffffff", stroke="#0f172a", stroke_width="2",
       ),
       rx.el.svg.text(
-          "1:2 DEMUX", x="57", y="18", text_anchor="middle",
+          "1:2 DEMUX", x="57", y="28", text_anchor="middle",
           font_size="8px", font_weight="bold", fill="#0f172a",
       ),
       rx.el.svg.text("D", x="26", y="36", font_size="8px", font_weight="bold"),
-      rx.el.svg.text("S", x="60", y="70", text_anchor="middle", font_size="7px", font_weight="bold"),
       rx.el.svg.text("Y0", x="79", y="27", font_size="7px", font_weight="bold"),
       rx.el.svg.text("Y1", x="79", y="60", font_size="7px", font_weight="bold"),
       rx.el.svg.line(x1="0", y1="30", x2="21", y2="30", stroke="#0f172a", stroke_width="2"),
-      rx.el.svg.line(x1="60", y1="62", x2="60", y2="80", stroke="#0f172a", stroke_width="2"),
+      rx.el.svg.line(x1="60", y1="0", x2="60", y2="10", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="94", y1="22", x2="120", y2="22", stroke="#0f172a", stroke_width="2"),
       rx.el.svg.line(x1="94", y1="55", x2="120", y2="55", stroke="#0f172a", stroke_width="2"),
       view_box="0 0 120 80", width="120px", height="80px",
@@ -1771,7 +1921,13 @@ def render_schematic_symbol(
                           gate_type == "FULL_ADDER",
                           vec_full_adder(),
                           rx.cond(
-                              gate_type == "MUX_2_1",
+                              gate_type == "HALF_SUBTRACTOR",
+                              vec_half_subtractor(),
+                              rx.cond(
+                                  gate_type == "FULL_SUBTRACTOR",
+                                  vec_full_subtractor(),
+                                  rx.cond(
+                                      gate_type == "MUX_2_1",
                               vec_mux_2_1(),
                               rx.cond(
                                   gate_type == "DEMUX_1_2",
@@ -1881,6 +2037,8 @@ def render_schematic_symbol(
                                       ),
                                   ),
                               ),
+                                  ),
+                              ),
                           ),
                       ),
                                                   ),
@@ -1945,9 +2103,13 @@ def annotation_node(note_key: rx.Var) -> rx.Component:
 # 3. INTERACTIVE GATE NODE
 # =============================================================================
 def render_input_pin_item(
-    cell_key: rx.Var, idx: int, offset_y: int
+    cell_key: rx.Var,
+    idx: int,
+    offset_y: int,
+    left_position: str = "-9px",
 ) -> rx.Component:
   slot_name = f"input{idx}_src"
+  is_connected = State.gates[cell_key][slot_name] != ""
   return rx.box(
       rx.box(
           width="8px",
@@ -1966,7 +2128,7 @@ def render_input_pin_item(
       width="18px",
       height="18px",
       position="absolute",
-      left="-9px",
+      left=left_position,
       top=f"{offset_y}px",
       transform="translateY(-50%)",
       z_index="15",
@@ -1975,7 +2137,11 @@ def render_input_pin_item(
           "align_items": "center",
           "justify_content": "center",
       },
-      class_name="input-pin-bubble",
+      class_name=rx.cond(
+          is_connected,
+          "input-pin-bubble connected-terminal",
+          "input-pin-bubble",
+      ),
       cursor="pointer",
       custom_attrs={
           "data-pin-gate": cell_key,
@@ -1990,6 +2156,7 @@ def render_bottom_input_pin(
     cell_key: rx.Var, idx: int, offset_x: int, offset_y: int
 ) -> rx.Component:
   slot_name = f"input{idx}_src"
+  is_connected = State.gates[cell_key][slot_name] != ""
   return rx.box(
       rx.box(
           width="8px", height="8px", border_radius="50%", bg="#0f172a",
@@ -2002,11 +2169,65 @@ def render_bottom_input_pin(
       left=f"{offset_x}px", top=f"{offset_y}px",
       transform="translate(-50%, -50%)", z_index="15",
       style={"display": "flex", "align_items": "center", "justify_content": "center"},
-      class_name="input-pin-bubble bottom-input-pin", cursor="pointer",
+      class_name=rx.cond(
+          is_connected,
+          "input-pin-bubble bottom-input-pin connected-terminal",
+          "input-pin-bubble bottom-input-pin",
+      ),
+      cursor="pointer",
       custom_attrs={
           "data-pin-gate": cell_key, "data-pin-slot": slot_name,
           "data-offset-x": str(offset_x), "data-offset-y": str(offset_y),
           "data-pin-side": "bottom",
+      },
+      on_click=State.connect_or_disconnect_input(cell_key, slot_name),
+  )
+
+
+def render_top_input_pin(
+    cell_key: rx.Var, idx: int, offset_x: int
+) -> rx.Component:
+  slot_name = f"input{idx}_src"
+  is_connected = State.gates[cell_key][slot_name] != ""
+  return rx.box(
+      rx.box(
+          width="8px",
+          height="8px",
+          border_radius="50%",
+          bg="#0f172a",
+          border="2px solid #ffffff",
+          _hover={
+              "bg": "#ef4444",
+              "transform": "scale(1.8)",
+              "border-color": "#b91c1c",
+          },
+          transition="all 0.15s ease",
+          class_name="terminal-dot",
+      ),
+      width="18px",
+      height="18px",
+      position="absolute",
+      left=f"{offset_x}px",
+      top="-9px",
+      transform="translateX(-50%)",
+      z_index="15",
+      style={
+          "display": "flex",
+          "align_items": "center",
+          "justify_content": "center",
+      },
+      class_name=rx.cond(
+          is_connected,
+          "input-pin-bubble top-input-pin connected-terminal",
+          "input-pin-bubble top-input-pin",
+      ),
+      cursor="pointer",
+      custom_attrs={
+          "data-pin-gate": cell_key,
+          "data-pin-slot": slot_name,
+          "data-offset-x": str(offset_x),
+          "data-offset-y": "0",
+          "data-pin-side": "top",
       },
       on_click=State.connect_or_disconnect_input(cell_key, slot_name),
   )
@@ -2017,6 +2238,9 @@ def render_named_output_pin(
 ) -> rx.Component:
   composite_key = cell_key + ":" + port_name
   is_selected = State.wiring_source == composite_key
+  is_connected = State.gates[cell_key].get(
+      "_connected_port_" + port_name, False
+  )
   return rx.box(
       rx.box(
           width="8px",
@@ -2047,7 +2271,15 @@ def render_named_output_pin(
           "align_items": "center",
           "justify_content": "center",
       },
-      class_name="output-pin-bubble",
+      class_name=rx.cond(
+          is_selected,
+          "output-pin-bubble wiring-source-active",
+          rx.cond(
+              is_connected,
+              "output-pin-bubble connected-terminal",
+              "output-pin-bubble",
+          ),
+      ),
       cursor="pointer",
       custom_attrs={
           "data-pin-gate": composite_key,
@@ -2079,6 +2311,8 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   is_seven_seg = g_type == "SEVEN_SEG"
   is_half_adder = g_type == "HALF_ADDER"
   is_full_adder = g_type == "FULL_ADDER"
+  is_half_subtractor = g_type == "HALF_SUBTRACTOR"
+  is_full_subtractor = g_type == "FULL_SUBTRACTOR"
   is_mux_2_1 = g_type == "MUX_2_1"
   is_demux_1_2 = g_type == "DEMUX_1_2"
   is_mux_4_1 = g_type == "MUX_4_1"
@@ -2086,11 +2320,14 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   is_decoder_2_4 = g_type == "DECODER_2_4"
   is_encoder_4_2 = g_type == "ENCODER_4_2"
   is_msi_lsi = (
-      is_half_adder | is_full_adder | is_mux_2_1 | is_demux_1_2
+      is_half_adder | is_full_adder | is_half_subtractor | is_full_subtractor
+      | is_mux_2_1 | is_demux_1_2
       | is_mux_4_1 | is_demux_1_4 | is_decoder_2_4 | is_encoder_4_2
   )
   is_source = State.wiring_source == cell_key
   is_source_bar = State.wiring_source == cell_key + ":q_bar"
+  has_output_connection = g_data.get("_has_output_connection", False)
+  has_qbar_connection = g_data.get("_connected_port_q_bar", False)
   is_selected = State.selected_gate_key == cell_key
   is_on = g_data["value"] == 1
 
@@ -2109,9 +2346,9 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   card_height = rx.cond(
-      is_half_adder, "70px",
+      is_half_adder | is_half_subtractor, "70px",
       rx.cond(
-          is_full_adder, "90px",
+          is_full_adder | is_full_subtractor, "90px",
           rx.cond(
               is_mux_4_1, "120px",
               rx.cond(
@@ -2210,9 +2447,9 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   pin1 = rx.cond(
-      is_half_adder, render_input_pin_item(cell_key, 1, 25),
+      is_half_adder | is_half_subtractor, render_input_pin_item(cell_key, 1, 25),
       rx.cond(
-          is_full_adder | is_mux_2_1, render_input_pin_item(cell_key, 1, 22),
+          is_full_adder | is_full_subtractor | is_mux_2_1, render_input_pin_item(cell_key, 1, 22),
           rx.cond(
               is_demux_1_2 | is_demux_1_4, render_input_pin_item(cell_key, 1, 30),
               rx.cond(
@@ -2220,9 +2457,15 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   rx.cond(
                       is_decoder_2_4, rx.fragment(),
                       rx.cond(
-                          (g_type == "NOT") | is_output, render_input_pin_item(cell_key, 1, 30),
+                          is_output,
+                          render_input_pin_item(
+                              cell_key, 1, 30, left_position="1px"
+                          ),
                           rx.cond(
-                              is_seven_seg, render_input_pin_item(cell_key, 1, 20),
+                              g_type == "NOT",
+                              render_input_pin_item(cell_key, 1, 30),
+                              rx.cond(
+                                  is_seven_seg, render_input_pin_item(cell_key, 1, 20),
                               rx.cond(
                                   (g_type == "D_FF") | (g_type == "T_FF"), render_input_pin_item(cell_key, 1, 15),
                                   rx.cond(
@@ -2230,6 +2473,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                                       render_input_pin_item(cell_key, 1, 20),
                                   ),
                               ),
+                          ),
                           ),
                       ),
                   ),
@@ -2239,9 +2483,9 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   pin2 = rx.cond(
-      is_half_adder, render_input_pin_item(cell_key, 2, 50),
+      is_half_adder | is_half_subtractor, render_input_pin_item(cell_key, 2, 50),
       rx.cond(
-          is_full_adder, render_input_pin_item(cell_key, 2, 45),
+          is_full_adder | is_full_subtractor, render_input_pin_item(cell_key, 2, 45),
           rx.cond(
               is_mux_2_1, render_input_pin_item(cell_key, 2, 48),
               rx.cond(
@@ -2261,7 +2505,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                                           rx.cond(
                                               (g_type == "RS_FF") | (g_type == "JK_FF"), render_input_pin_item(cell_key, 2, 33),
                                               rx.cond(
-                                                  ((num_inputs != 1) & (~is_output) & (~is_input) & ((g_type != "NOT") & (g_type != "XOR") & (g_type != "XNOR"))),
+                                                  ((num_inputs != 1) & (~is_output) & (~is_input) & (g_type != "NOT")),
                                                   render_input_pin_item(cell_key, 2, 40), rx.fragment(),
                                               ),
                                           ),
@@ -2277,7 +2521,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   )
 
   pin3 = rx.cond(
-      is_full_adder, render_input_pin_item(cell_key, 3, 68),
+      is_full_adder | is_full_subtractor, render_input_pin_item(cell_key, 3, 68),
       rx.cond(
           is_mux_4_1, render_input_pin_item(cell_key, 3, 54),
           rx.cond(
@@ -2414,9 +2658,9 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
           rx.fragment(pin1, pin2, pin3, pin4, pin5, pin6),
       ),
       rx.cond(
-          is_mux_2_1, render_bottom_input_pin(cell_key, 3, 60, 89),
+          is_mux_2_1, render_top_input_pin(cell_key, 3, 60),
           rx.cond(
-              is_demux_1_2, render_bottom_input_pin(cell_key, 2, 60, 89),
+              is_demux_1_2, render_top_input_pin(cell_key, 2, 60),
               rx.cond(
                   is_mux_4_1, rx.fragment(
                       render_bottom_input_pin(cell_key, 5, 50, 129),
@@ -2461,7 +2705,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
               width="18px",
               height="18px",
               position="absolute",
-              right="-9px",
+              right=rx.cond(g_type == "INPUT", "1px", "-9px"),
               top=output_pin_top,
               transform="translateY(-50%)",
               z_index="15",
@@ -2470,7 +2714,15 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   "align_items": "center",
                   "justify_content": "center",
               },
-              class_name="output-pin-bubble",
+              class_name=rx.cond(
+                  is_source,
+                  "output-pin-bubble wiring-source-active",
+                  rx.cond(
+                      has_output_connection,
+                      "output-pin-bubble connected-terminal",
+                      "output-pin-bubble",
+                  ),
+              ),
               cursor="pointer",
               custom_attrs={
                   "data-pin-gate": cell_key,
@@ -2567,7 +2819,15 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   "align_items": "center",
                   "justify_content": "center",
               },
-              class_name="output-pin-bubble",
+              class_name=rx.cond(
+                  is_source_bar,
+                  "output-pin-bubble wiring-source-active",
+                  rx.cond(
+                      has_qbar_connection,
+                      "output-pin-bubble connected-terminal",
+                      "output-pin-bubble",
+                  ),
+              ),
               cursor="pointer",
               custom_attrs={
                   "data-pin-gate": cell_key + ":q_bar",
@@ -2865,6 +3125,26 @@ def index() -> rx.Component:
           on_click=State.cancel_active_actions,
       ),
       rx.button(
+          id="copy-trigger-btn",
+          style={"display": "none"},
+          on_click=State.copy_selected_gate,
+      ),
+      rx.button(
+          id="paste-trigger-btn",
+          style={"display": "none"},
+          on_click=State.paste_copied_gate,
+      ),
+      rx.button(
+          id="duplicate-trigger-btn",
+          style={"display": "none"},
+          on_click=State.duplicate_selected_gate,
+      ),
+      rx.button(
+          id="delete-selected-trigger-btn",
+          style={"display": "none"},
+          on_click=State.delete_selected_gate,
+      ),
+      rx.button(
           id="undo-trigger-btn",
           style={"display": "none"},
           on_click=State.undo,
@@ -2914,13 +3194,13 @@ def index() -> rx.Component:
               rx.hstack(
                   rx.vstack(
                       rx.text(
-                          "CircuitLab Pro",
+                          "BoolNexa",
                           font_weight="black",
                           font_size="16px",
                           color="#0f172a",
                       ),
                       rx.text(
-                          "Sequential & Combinational",
+                          "Interactive Digital Logic Simulator",
                           font_size="9px",
                           color="#64748b",
                           margin_top="-6px",
@@ -2970,93 +3250,23 @@ def index() -> rx.Component:
                   width="100%",
               ),
               rx.divider(color="#e2e8f0"),
-              # Project Save/Load & Truth Table Actions
+              # Local project save/load: no account or email required.
               rx.vstack(
                   rx.text(
-                      "Project & Analysis",
+                      "Project",
                       font_size="10px",
                       font_weight="black",
                       color="#1e293b",
-                  ),
-                  rx.vstack(
-                      rx.text(
-                          "Register to Save",
-                          font_size="9px",
-                          font_weight="800",
-                          color="#475569",
-                      ),
-                      rx.hstack(
-                          rx.el.input(
-                              value=State.registration_email,
-                              on_change=State.set_registration_email,
-                              placeholder="you@example.com",
-                              type="email",
-                              autocomplete="email",
-                              style={
-                                  "width": "100%",
-                                  "height": "28px",
-                                  "font_size": "10px",
-                                  "border": "1px solid #cbd5e1",
-                                  "border_radius": "5px",
-                                  "padding": "0 7px",
-                                  "outline": "none",
-                                  "background": "#ffffff",
-                              },
-                          ),
-                          rx.button(
-                              rx.cond(State.is_registered, "Registered", "Register"),
-                              size="1",
-                              color_scheme=rx.cond(
-                                  State.is_registered, "green", "blue"
-                              ),
-                              variant=rx.cond(
-                                  State.is_registered, "soft", "solid"
-                              ),
-                              on_click=State.register_email,
-                              cursor="pointer",
-                              min_width="72px",
-                          ),
-                          width="100%",
-                          spacing="1",
-                      ),
-                      rx.cond(
-                          State.registration_error != "",
-                          rx.text(
-                              State.registration_error,
-                              font_size="9px",
-                              color="#dc2626",
-                          ),
-                          rx.cond(
-                              State.is_registered,
-                              rx.text(
-                                  "Registered: " + State.registered_email,
-                                  font_size="9px",
-                                  color="#15803d",
-                              ),
-                              rx.fragment(),
-                          ),
-                      ),
-                      width="100%",
-                      spacing="1",
                   ),
                   rx.hstack(
                       rx.button(
                           "Save Project",
                           size="1",
-                          color_scheme=rx.cond(
-                              State.is_registered, "blue", "gray"
-                          ),
+                          color_scheme="blue",
                           variant="soft",
-                          cursor=rx.cond(
-                              State.is_registered, "pointer", "not-allowed"
-                          ),
-                          disabled=~State.is_registered,
-                          title=rx.cond(
-                              State.is_registered,
-                              "Save circuit project",
-                              "Register a valid email before saving",
-                          ),
+                          cursor="pointer",
                           width="48%",
+                          title="Save circuit project locally",
                           on_click=rx.call_script(
                               f"""
                               const data = {{
@@ -3064,14 +3274,13 @@ def index() -> rx.Component:
                                   gate_keys: {State.gate_keys.to(str)},
                                   wire_offsets: {State.wire_offsets.to(str)},
                                   annotations: {State.annotations.to(str)},
-                                  annotation_keys: {State.annotation_keys.to(str)},
-                                  saved_by_email: {State.registered_email.to(str)}
+                                  annotation_keys: {State.annotation_keys.to(str)}
                               }};
                               const blob = new Blob([JSON.stringify(data, null, 2)], {{type: 'application/json'}});
                               const url = URL.createObjectURL(blob);
                               const a = document.createElement('a');
                               a.href = url;
-                              a.download = 'circuit_project.json';
+                              a.download = 'boolnexa_project.json';
                               a.click();
                               URL.revokeObjectURL(url);
                               """
@@ -3090,16 +3299,6 @@ def index() -> rx.Component:
                       ),
                       width="100%",
                       justify="between",
-                  ),
-                  rx.button(
-                      "Generate Truth Table",
-                      size="1",
-                      color_scheme="purple",
-                      variant="solid",
-                      cursor="pointer",
-                      width="100%",
-                      margin_top="4px",
-                      on_click=State.toggle_truth_table,
                   ),
                   width="100%",
                   spacing="1",
@@ -3180,6 +3379,8 @@ def index() -> rx.Component:
                       rx.el.option("-- Select MSI / LSI Block --", value=""),
                       rx.el.option("Half Adder", value="HALF_ADDER"),
                       rx.el.option("Full Adder", value="FULL_ADDER"),
+                      rx.el.option("Half Subtractor", value="HALF_SUBTRACTOR"),
+                      rx.el.option("Full Subtractor", value="FULL_SUBTRACTOR"),
                       rx.el.option("2:1 Multiplexer", value="MUX_2_1"),
                       rx.el.option("1:2 Demultiplexer", value="DEMUX_1_2"),
                       rx.el.option("4:1 Multiplexer", value="MUX_4_1"),
@@ -3202,7 +3403,7 @@ def index() -> rx.Component:
                       },
                   ),
                   rx.text(
-                      "All pins are wireable; Full Adders can cascade COUT → CIN.",
+                      "All pins are wireable; cascade COUT → CIN and BOUT → BIN.",
                       font_size="8px",
                       color="#64748b",
                   ),
@@ -3216,6 +3417,16 @@ def index() -> rx.Component:
                   flex_wrap="wrap",
                   justify="between",
                   style={"gap": "10px 0px"},
+              ),
+              rx.divider(color="#e2e8f0"),
+              rx.vstack(
+                  rx.text("BoolNexa", font_size="10px", font_weight="black", color="#0f172a"),
+                  rx.text("Interactive Digital Logic Simulator", font_size="8px", color="#64748b"),
+                  rx.text("Developed by Basanta Paudyal • v1.0.0", font_size="8px", color="#64748b"),
+                  rx.text("boolnexa.sim@gmail.com", font_size="8px", color="#2563eb"),
+                  rx.text("© 2026 Basanta Paudyal", font_size="8px", color="#94a3b8"),
+                  width="100%",
+                  spacing="0",
               ),
               rx.box(flex="1"),
               width="100%",
@@ -3306,7 +3517,17 @@ def index() -> rx.Component:
           ),
           on_context_menu=State.cancel_active_actions,
           on_click=rx.call_script(
-              "window.__calcCanvasClick ? window.__calcCanvasClick() : null",
+              """
+              (() => {
+                  const data = window.__calcCanvasClick
+                      ? window.__calcCanvasClick()
+                      : {};
+                  return {
+                      ...(data || {}),
+                      blank_canvas: window.__dllBlankCanvasPointer === true,
+                  };
+              })()
+              """,
               callback=State.handle_canvas_click,
           ),
           on_mouse_up=rx.call_script(
@@ -3342,85 +3563,6 @@ def index() -> rx.Component:
               ),
           },
       ),
-      # Truth Table Modal Dialog
-      rx.cond(
-          State.is_truth_table_open,
-          rx.box(
-              rx.box(
-                  rx.vstack(
-                      rx.hstack(
-                          rx.text(
-                              "Circuit Truth Table",
-                              font_weight="bold",
-                              font_size="16px",
-                              color="#0f172a",
-                          ),
-                          rx.spacer(),
-                          rx.button(
-                              "✕",
-                              on_click=State.toggle_truth_table,
-                              variant="ghost",
-                              size="1",
-                              cursor="pointer",
-                          ),
-                          width="100%",
-                          align_items="center",
-                      ),
-                      rx.divider(),
-                      rx.box(
-                          rx.el.table(
-                              rx.foreach(
-                                  State.truth_table_rows,
-                                  lambda row: rx.el.tr(
-                                      rx.foreach(
-                                          row,
-                                          lambda k, v: rx.el.td(
-                                              v,
-                                              style={
-                                                  "padding": "6px 12px",
-                                                  "border": "1px solid #cbd5e1",
-                                                  "text_align": "center",
-                                              },
-                                          ),
-                                      )
-                                  ),
-                              ),
-                              style={
-                                  "width": "100%",
-                                  "border_collapse": "collapse",
-                                  "font_size": "12px",
-                              },
-                          ),
-                          style={
-                              "max_height": "300px",
-                              "overflow_y": "auto",
-                              "width": "100%",
-                          },
-                      ),
-                      spacing="3",
-                      width="100%",
-                  ),
-                  bg="white",
-                  padding="20px",
-                  border_radius="10px",
-                  box_shadow="0 20px 25px -5px rgba(0, 0, 0, 0.1)",
-                  width="400px",
-                  max_width="90vw",
-              ),
-              position="fixed",
-              top="0",
-              left="0",
-              width="100vw",
-              height="100vh",
-              bg="rgba(0,0,0,0.4)",
-              style={
-                  "display": "flex",
-                  "align_items": "center",
-                  "justify_content": "center",
-                  "zIndex": "1000",
-              },
-          ),
-      ),
       rx.box(
           id="logic-interaction-bootstrap",
           width="0px",
@@ -3440,6 +3582,103 @@ def index() -> rx.Component:
                       [50, 100, 250, 500, 1000, 2000].forEach(ms => {
                           setTimeout(tryReady, ms);
                       });
+                  }
+
+                  if (!window.__dllKeyboardShortcutsInstalled) {
+                      window.__dllKeyboardShortcutsInstalled = true;
+
+                      const clickHiddenButton = (id) => {
+                          const button = document.getElementById(id);
+                          if (button) {
+                              button.dispatchEvent(
+                                  new MouseEvent("click", { bubbles: true })
+                              );
+                          }
+                      };
+
+                      document.addEventListener("keydown", (event) => {
+                          const target = event.target;
+                          const tag = target && target.tagName
+                              ? target.tagName.toUpperCase()
+                              : "";
+
+                          if (
+                              tag === "INPUT"
+                              || tag === "TEXTAREA"
+                              || tag === "SELECT"
+                              || (target && target.isContentEditable)
+                          ) {
+                              return;
+                          }
+
+                          const ctrl = event.ctrlKey || event.metaKey;
+                          const key = String(event.key || "").toLowerCase();
+
+                          if (ctrl && key === "c") {
+                              event.preventDefault();
+                              clickHiddenButton("copy-trigger-btn");
+                          } else if (ctrl && key === "v") {
+                              event.preventDefault();
+                              clickHiddenButton("paste-trigger-btn");
+                          } else if (ctrl && key === "d") {
+                              event.preventDefault();
+                              clickHiddenButton("duplicate-trigger-btn");
+                          } else if (event.key === "Delete") {
+                              event.preventDefault();
+                              clickHiddenButton("delete-selected-trigger-btn");
+                          } else if (ctrl && key === "z" && !event.shiftKey) {
+                              event.preventDefault();
+                              clickHiddenButton("undo-trigger-btn");
+                          } else if (
+                              (ctrl && key === "y")
+                              || (ctrl && event.shiftKey && key === "z")
+                          ) {
+                              event.preventDefault();
+                              clickHiddenButton("redo-trigger-btn");
+                          }
+                      });
+                  }
+
+                  if (!window.__dllBlankCanvasListenerInstalled) {
+                      window.__dllBlankCanvasListenerInstalled = true;
+                      window.__dllBlankCanvasPointer = false;
+
+                      document.addEventListener(
+                          "pointerdown",
+                          (event) => {
+                              const workspace =
+                                  document.getElementById("logic-workspace");
+                              const target = event.target;
+
+                              if (
+                                  !workspace
+                                  || !target
+                                  || !workspace.contains(target)
+                              ) {
+                                  window.__dllBlankCanvasPointer = false;
+                                  return;
+                              }
+
+                              const interactive = target.closest(
+                                  [
+                                      ".schematic-gate-card",
+                                      ".input-pin-bubble",
+                                      ".output-pin-bubble",
+                                      ".wire-hitbox",
+                                      "#logic-svg-layer g",
+                                      "#canvas-delete-zone",
+                                      ".canvas-text-editor",
+                                      "button",
+                                      "select",
+                                      "input",
+                                      "textarea",
+                                  ].join(",")
+                              );
+
+                              window.__dllBlankCanvasPointer = !interactive;
+                          },
+                          true
+                      );
                   }
               })();
               """
