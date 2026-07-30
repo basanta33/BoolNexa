@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://boolnexa-teal-ring.reflex.run/sitemap.xml
