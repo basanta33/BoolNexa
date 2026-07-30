@@ -3695,4 +3695,19 @@ app = rx.App(
         rx.script(src="/logic_interactions.js"),
     ],
 )
-app.add_page(index)
+app.add_page(
+    index,
+    title="BoolNexa - Free Online Digital Logic Simulator",
+    description=(
+        "Design, connect, and simulate digital logic circuits online with BoolNexa. "
+        "Explore logic gates, flip-flops, adders, subtractors, multiplexers, "
+        "demultiplexers, encoders, and decoders for free."
+    ),
+    meta=[
+        {"name": "robots", "content": "index, follow"},
+        {"property": "og:title", "content": "BoolNexa - Free Online Digital Logic Simulator"},
+        {"property": "og:description", "content": "Design and simulate digital logic circuits online with BoolNexa."},
+        {"property": "og:type", "content": "website"},
+        {"property": "og:url", "content": "https://boolnexa-teal-ring.reflex.run/"},
+    ],
+)
