@@ -1,0 +1,147 @@
+"""Canonical BoolNexa Academy path and lesson routes.
+
+Keep Academy home navigation and route-regression tests tied to one explicit
+catalogue so completed lessons cannot silently disappear from the UI.
+"""
+from __future__ import annotations
+
+from typing import Final
+
+ACADEMY_PATH_ROUTES: Final[dict[int, tuple[tuple[str, str], ...]]] = {
+    1: (
+        ("Why Computers Use Binary", "/academy/unit-1/why-computers-use-binary"),
+        ("Binary Place Value", "/academy/unit-1/binary-place-value"),
+        ("Decimal to Binary", "/academy/unit-1/decimal-to-binary"),
+        ("Binary to Decimal", "/academy/unit-1/binary-to-decimal"),
+        ("Octal and Hexadecimal", "/academy/unit-1/octal-and-hexadecimal"),
+        ("Binary Arithmetic", "/academy/unit-1/binary-arithmetic"),
+        ("Signed Binary", "/academy/unit-1/signed-binary"),
+        ("Digital Codes", "/academy/unit-1/digital-codes"),
+        ("Binary Storage", "/academy/unit-1/binary-storage"),
+        ("Mastery Challenge", "/academy/unit-1/mastery-challenge"),
+    ),
+    2: (
+        ("Logic States and Gates", "/academy/unit-2/logic-states-and-gates"),
+        ("AND, OR and NOT", "/academy/unit-2/and-or-not"),
+        ("NAND and NOR", "/academy/unit-2/nand-nor"),
+        ("XOR and XNOR", "/academy/unit-2/xor-xnor"),
+        ("Boolean Expressions", "/academy/unit-2/boolean-expressions"),
+        ("Boolean Laws", "/academy/unit-2/boolean-laws"),
+        ("Truth Tables", "/academy/unit-2/truth-tables"),
+        ("Expression to Circuit", "/academy/unit-2/expression-to-circuit"),
+        ("Universal Implementation", "/academy/unit-2/universal-implementation"),
+        ("Mastery Challenge", "/academy/unit-2/mastery-challenge"),
+    ),
+    3: (
+        ("K-map Introduction", "/academy/unit-3/kmap-introduction"),
+        ("Two-Variable K-maps", "/academy/unit-3/two-variable-kmaps"),
+        ("Three-Variable K-maps", "/academy/unit-3/three-variable-kmaps"),
+        ("Four-Variable K-maps", "/academy/unit-3/four-variable-kmaps"),
+        ("Prime Implicants", "/academy/unit-3/prime-implicants"),
+        ("SOP, POS and Don't-Cares", "/academy/unit-3/sop-pos-dont-cares"),
+        ("Five-Variable K-maps", "/academy/unit-3/five-variable-kmaps"),
+        ("Six-Variable K-maps", "/academy/unit-3/six-variable-kmaps"),
+        ("Advanced Strategy", "/academy/unit-3/advanced-strategy"),
+        ("Mastery Challenge", "/academy/unit-3/mastery-challenge"),
+    ),
+    4: (
+        ("Combinational Foundations", "/academy/unit-4/combinational-foundations"),
+        ("Adders", "/academy/unit-4/adders"),
+        ("Subtractors", "/academy/unit-4/subtractors"),
+        ("Comparators", "/academy/unit-4/comparators"),
+        ("Multiplexers", "/academy/unit-4/multiplexers"),
+        ("Demultiplexers", "/academy/unit-4/demultiplexers"),
+        ("Decoders", "/academy/unit-4/decoders"),
+        ("Encoders", "/academy/unit-4/encoders"),
+        ("Integrated Design", "/academy/unit-4/integrated-design"),
+        ("Mastery Challenge", "/academy/unit-4/mastery-challenge"),
+    ),
+    5: (
+        ("Sequential Foundations", "/academy/unit-5/sequential-foundations"),
+        ("Latches", "/academy/unit-5/latches"),
+        ("Flip-Flops", "/academy/unit-5/flip-flops"),
+        ("Clock Timing", "/academy/unit-5/clock-timing"),
+        ("Registers", "/academy/unit-5/registers"),
+        ("Counters", "/academy/unit-5/counters"),
+        ("FSM Foundations", "/academy/unit-5/fsm"),
+        ("FSM Design", "/academy/unit-5/fsm-design"),
+        ("Integrated Design", "/academy/unit-5/integrated-design"),
+        ("Mastery Challenge", "/academy/unit-5/mastery-challenge"),
+    ),
+    6: (
+        ("Digital Memory Foundations", "/academy/unit-6/memory-foundations"),
+        ("RAM, ROM and Memory Operations", "/academy/unit-6/ram-rom"),
+        ("SRAM vs DRAM", "/academy/unit-6/sram-dram"),
+        ("Memory Addressing, Organisation and Expansion", "/academy/unit-6/memory-organisation"),
+        ("Cache Memory and Locality", "/academy/unit-6/cache-memory"),
+        ("Cache Mapping, Hits and Misses", "/academy/unit-6/cache-mapping"),
+        ("Virtual Memory and Address Translation", "/academy/unit-6/virtual-memory"),
+        ("Memory Reliability, Parity and ECC", "/academy/unit-6/memory-reliability"),
+        ("Memory Hierarchy and Performance", "/academy/unit-6/memory-hierarchy-performance"),
+        ("Memory System Integration", "/academy/unit-6/memory-system-integration"),
+    ),
+    7: (
+        ("Registers and Parallel Data Storage", "/academy/unit-7/registers-parallel-storage"),
+        ("Shift Registers and Data Movement", "/academy/unit-7/shift-registers"),
+        ("Ripple Counters and Frequency Division", "/academy/unit-7/ripple-counters"),
+        ("Synchronous Counters and Modulo-N Design", "/academy/unit-7/synchronous-counters"),
+        ("Up/Down and Programmable Counters", "/academy/unit-7/up-down-programmable-counters"),
+        ("Timing Sequences and Counter-Based Control", "/academy/unit-7/timing-sequences"),
+        ("Register-Counter System Integration", "/academy/unit-7/register-counter-integration"),
+    ),
+    8: (
+        ("Binary Addition, Subtraction and Arithmetic Hardware", "/academy/unit-8/binary-arithmetic-hardware"),
+        ("Carry, Overflow and Status Flags", "/academy/unit-8/carry-overflow-flags"),
+        ("Fast Adder Architectures", "/academy/unit-8/fast-adders"),
+        ("Arithmetic Operations and Datapaths", "/academy/unit-8/arithmetic-datapaths"),
+        ("Logic Operations and Function Selection", "/academy/unit-8/logic-function-selection"),
+        ("ALU Control and Operation Encoding", "/academy/unit-8/alu-control"),
+        ("ALU Flags and Comparisons", "/academy/unit-8/alu-flags-comparisons"),
+        ("Integrated ALU Design Challenge", "/academy/unit-8/integrated-alu-design"),
+    ),
+    9: (
+        ("CPU Architecture Foundations", "/academy/unit-9/cpu-architecture-foundations"),
+        ("Fetch, Decode and Execute", "/academy/unit-9/fetch-decode-execute"),
+        ("Registers, Buses and Register Transfer", "/academy/unit-9/register-transfer"),
+        ("Instruction Formats and Data Movement", "/academy/unit-9/instruction-formats"),
+        ("Single-Cycle Datapath", "/academy/unit-9/single-cycle-datapath"),
+        ("Control Signals and Branching", "/academy/unit-9/control-signals-branching"),
+        ("Pipeline Fundamentals", "/academy/unit-9/pipeline-fundamentals"),
+        ("Pipeline Hazards", "/academy/unit-9/pipeline-hazards"),
+    ),
+    10: (
+        ("System Interconnect & CPU–Memory/I/O Foundations", "/academy/unit-10/system-interconnect-foundations"),
+        ("I/O Organisation & Memory-Mapped I/O", "/academy/unit-10/io-organisation-memory-mapped-io"),
+        ("Interrupts & Interrupt-Driven I/O", "/academy/unit-10/interrupts-interrupt-driven-io"),
+        ("System Buses, Arbitration & Protocols", "/academy/unit-10/system-buses-arbitration-protocols"),
+        ("DMA & High-Throughput Data Movement", "/academy/unit-10/dma-high-throughput-data-movement"),
+        ("Timers, Counters & System Timing", "/academy/unit-10/timers-counters-system-timing"),
+        ("Peripheral Interfaces & Serial Communication", "/academy/unit-10/peripheral-interfaces-serial-communication"),
+        ("Storage Systems & Block I/O", "/academy/unit-10/storage-systems-block-io"),
+    ),
+    11: (
+        ("Embedded Systems Foundations", "/academy/unit-11/embedded-systems-foundations"),
+        ("GPIO, Pin Control & Hardware Interfacing", "/academy/unit-11/gpio-pin-control-hardware-interfacing"),
+        ("ADC, Analog Signals & Sensor Acquisition", "/academy/unit-11/adc-analog-signals-sensor-acquisition"),
+        ("PWM, Timers & Waveform Generation", "/academy/unit-11/pwm-timers-waveform-generation"),
+        ("Interrupts, Priorities & ISR Design", "/academy/unit-11/interrupts-priorities-isr-design"),
+        ("Real-Time Scheduling, Tasks & Determinism", "/academy/unit-11/real-time-scheduling-tasks-determinism"),
+        ("UART, SPI, I²C & Peripheral Communication", "/academy/unit-11/uart-spi-i2c-peripheral-communication"),
+        ("Embedded System Integration, Reliability & Debugging", "/academy/unit-11/embedded-system-integration-reliability-debugging"),
+    ),
+    12: (
+        ("HDL & FPGA Foundations", "/academy/unit-12/hdl-fpga-foundations"),
+        ("Combinational HDL Design & Modules", "/academy/unit-12/combinational-hdl-design-modules"),
+        ("Sequential HDL, Registers & Clocks", "/academy/unit-12/sequential-hdl-registers-clocks"),
+        ("Finite-State Machines & Control Logic", "/academy/unit-12/finite-state-machines-control-logic"),
+        ("Testbenches, Simulation & Verification", "/academy/unit-12/testbenches-simulation-verification"),
+        ("FPGA Synthesis, Constraints & Timing", "/academy/unit-12/fpga-synthesis-constraints-timing"),
+        ("FPGA Memories, DSP Blocks & Pipelining", "/academy/unit-12/fpga-memories-dsp-pipelining"),
+        ("Complete FPGA System Design & Deployment", "/academy/unit-12/complete-fpga-system-design-deployment"),
+    ),
+}
+
+ACADEMY_TOTAL_LESSONS: Final[int] = sum(len(lessons) for lessons in ACADEMY_PATH_ROUTES.values())
+ACADEMY_FIRST_ROUTE: Final[dict[int, str]] = {
+    path: lessons[0][1] for path, lessons in ACADEMY_PATH_ROUTES.items()
+}

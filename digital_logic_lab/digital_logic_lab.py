@@ -1,8 +1,72 @@
+from .academy_registers_counters_path07 import (
+    registers_parallel_storage_lesson,
+    shift_registers_data_movement_lesson,
+    ripple_counters_frequency_division_lesson,
+    synchronous_counters_modulo_n_lesson,
+    up_down_programmable_counters_lesson,
+    timing_sequences_counter_control_lesson,
+    register_counter_integration_capstone_lesson,
+)
+from .academy_alu_path08 import binary_addition_subtraction_lesson, carry_overflow_status_flags_lesson, fast_adder_architectures_lesson, arithmetic_operations_datapaths_lesson, logic_operations_function_selection_lesson, alu_control_operation_encoding_lesson, alu_flags_comparisons_lesson, integrated_alu_design_capstone_lesson
+from .academy_cpu_path09 import cpu_architecture_foundations_lesson, fetch_decode_execute_lesson, registers_buses_register_transfer_lesson, instruction_formats_data_movement_lesson, single_cycle_datapath_lesson, control_signals_branching_lesson, pipeline_fundamentals_lesson, pipeline_hazards_lesson
+from .academy_system_path10 import system_interconnect_foundations_lesson, io_organisation_memory_mapped_io_lesson, interrupts_interrupt_driven_io_lesson, system_buses_arbitration_protocols_lesson, dma_high_throughput_data_movement_lesson, timers_counters_system_timing_lesson, peripheral_interfaces_serial_communication_lesson, storage_systems_block_io_lesson
+from .academy_embedded_path11 import embedded_systems_foundations_lesson, gpio_pin_control_hardware_interfacing_lesson, adc_analog_signals_sensor_acquisition_lesson, pwm_timers_waveform_generation_lesson, interrupts_priorities_isr_design_lesson, real_time_scheduling_tasks_determinism_lesson, uart_spi_i2c_peripheral_communication_lesson, embedded_system_integration_reliability_debugging_lesson
+from .academy_hdl_path12 import hdl_fpga_foundations_lesson, combinational_hdl_design_modules_lesson, sequential_hdl_registers_clocks_lesson, finite_state_machines_control_logic_lesson, testbenches_simulation_verification_lesson, fpga_synthesis_constraints_timing_lesson, fpga_memories_dsp_pipelining_lesson, complete_fpga_system_design_deployment_lesson
 # digital_logic_lab.py
 
 import copy
 import json
 import reflex as rx
+from .boolean_engine import generate_truth_table
+from .academy import academy
+from .academy_lesson import binary_intro_lesson
+from .academy_binary_place_value import binary_place_value_lesson
+from .academy_binary_conversions import decimal_to_binary_lesson, binary_to_decimal_lesson
+from .academy_binary_advanced import octal_hex_lesson, binary_arithmetic_lesson
+from .academy_binary_signed_codes import signed_binary_lesson, digital_codes_lesson
+from .academy_binary_storage_mastery import binary_storage_lesson, binary_mastery_lesson
+from .academy_boolean_gates_intro import logic_states_gates_lesson, and_or_not_lesson
+from .academy_boolean_universal_xor import nand_nor_lesson, xor_xnor_lesson
+from .academy_boolean_expressions_laws import boolean_expressions_lesson, boolean_laws_lesson
+from .academy_boolean_truth_circuit import truth_tables_lesson, expression_to_circuit_lesson
+from .academy_boolean_universal_mastery import universal_implementation_lesson, boolean_mastery_lesson
+from .academy_kmap_intro_two import kmap_intro_lesson, two_variable_kmap_lesson
+from .academy_kmap_three_four import three_variable_kmap_lesson, four_variable_kmap_lesson
+from .academy_kmap_groups_pos import prime_implicants_lesson, sop_pos_dont_cares_lesson
+from .academy_kmap_five_six import five_variable_kmap_lesson, six_variable_kmap_lesson
+from .academy_kmap_advanced_mastery import advanced_kmap_strategy_lesson, kmap_mastery_lesson
+from .academy_combinational_foundations_adders import combinational_foundations_lesson, adders_lesson
+from .academy_subtractors_comparators import subtractors_lesson, comparators_lesson
+from .academy_mux_demux import multiplexers_lesson, demultiplexers_lesson
+from .academy_decoders_encoders import decoders_lesson, encoders_lesson
+from .academy_combinational_design_mastery import integrated_combinational_design_lesson, combinational_mastery_lesson
+from .academy_sequential_foundations_latches import sequential_foundations_lesson, latches_lesson
+from .academy_flipflops_clocking import flipflops_lesson, clock_timing_lesson
+from .academy_registers_counters import registers_lesson, counters_lesson
+from .academy_fsm_design import fsm_foundations_lesson, fsm_design_lesson
+from .academy_sequential_integration_mastery import sequential_integration_lesson, sequential_mastery_lesson
+from .academy_memory_foundations import (
+    memory_foundations_lesson,
+    ram_rom_lesson,
+    sram_dram_lesson,
+    memory_organisation_lesson,
+    cache_memory_lesson,
+    cache_mapping_lesson,
+    virtual_memory_lesson,
+    memory_reliability_lesson,
+    memory_hierarchy_performance_lesson,
+    memory_system_integration_lesson,
+)
+from .number_system_lab import number_system_lab
+from .boolean_lab import boolean_lab
+from .logic_circuit_lab import logic_circuit_lab
+from .tools_hub import tools_hub
+from .circuit_simulator_transfer import circuit_graph_to_simulator_project
+from .simulator_wire_geometry import add_crossing_bridges
+from .realization_policy import OptimizationObjective, RealizationPreset
+from .realization_strategy import realize_preset
+
+from .seo import PAGE_DESCRIPTION, PAGE_TITLE, seo_head_components, seo_meta
 
 
 from .logic_core import (
@@ -17,6 +81,23 @@ from .logic_core import (
     get_output_pin_offset,
     get_source_value,
 )
+
+
+def _decode_callback_payload(value):
+    """Decode JSON-stringified browser callback data safely."""
+    if value is None:
+        return None
+    if isinstance(value, (dict, list, int, float, bool)):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped == "":
+            return value
+        try:
+            return json.loads(stripped)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return value
+    return value
 
 
 # =============================================================================
@@ -67,9 +148,422 @@ class State(rx.State):
   pan_x: float = 0.0
   pan_y: float = 0.0
   zoom: float = 1.0
+  generated_simulation_active: bool = False
+  generated_simulation_expression: str = ""
+  generated_simulation_mode: str = ""
+  generated_verification_rows: list[dict[str, str]] = []
+  generated_verification_status: str = ""
+  generated_verification_summary: str = ""
+  generated_active_truth_inputs: str = ""
+  generated_walkthrough_index: int = 0
+  generated_walkthrough_active: bool = False
+  generated_step_explanation: str = ""
+  generated_propagation_active: bool = False
+  generated_propagation_level: int = 0
+  generated_propagation_max_level: int = 0
+  generated_propagation_message: str = ""
+  generated_propagation_speed_ms: int = 700
+  generated_propagation_levels: dict[str, int] = {}
+  generated_propagation_complete: bool = False
+  generated_propagation_progress: str = ""
+  generated_propagation_timeline: list[dict[str, str]] = []
+  generated_active_level_detail: str = ""
+  generated_inspector_gate_key: str = ""
+  generated_inspector_title: str = ""
+  generated_inspector_detail: str = ""
+
+  def inspect_generated_gate(self, gate_key: str) -> None:
+    """Expose the selected generated gate's live teaching details."""
+    key = str(gate_key or "")
+    gate = self.gates.get(key, {})
+    if not gate:
+      return
+    self.generated_inspector_gate_key = key
+    self.selected_gate_key = key
+    gate_type = str(gate.get("type", ""))
+    label = str(gate.get("label", "")).strip() or gate_type or key
+    value = int(gate.get("value", 0))
+    level = self.generated_propagation_levels.get(key, -1)
+    inputs: list[str] = []
+    for slot, source in gate.items():
+      if not slot.startswith("input") or not slot.endswith("_src") or not source:
+        continue
+      source_key = str(source).split(":", 1)[0]
+      source_gate = self.gates.get(source_key, {})
+      source_name = (
+          str(source_gate.get("label", "")).strip()
+          or str(source_gate.get("type", ""))
+          or source_key
+      )
+      source_value = int(source_gate.get("value", 0))
+      inputs.append(f"{source_name}={source_value}")
+    input_text = ", ".join(inputs) if inputs else "no gate inputs"
+    level_text = f"level {level}" if level >= 0 else "manual circuit"
+    self.generated_inspector_title = f"{label} · {gate_type} · OUT={value}"
+    self.generated_inspector_detail = (
+        f"{label} is at {level_text}. Inputs: {input_text}. "
+        f"Its current output is {value}."
+    )
+
+  def clear_generated_gate_inspector(self) -> None:
+    self.generated_inspector_gate_key = ""
+    self.generated_inspector_title = ""
+    self.generated_inspector_detail = ""
+
+  def _refresh_generated_propagation_timeline(self) -> None:
+    """Build a learner-friendly snapshot of gates grouped by propagation level."""
+    if not self.generated_propagation_levels:
+      self.generated_propagation_timeline = []
+      self.generated_active_level_detail = ""
+      return
+
+    rows: list[dict[str, str]] = []
+    for level in range(self.generated_propagation_max_level + 1):
+      members: list[str] = []
+      for key in self.gate_keys:
+        if self.generated_propagation_levels.get(key, -1) != level:
+          continue
+        gate = self.gates.get(key, {})
+        gate_type = str(gate.get("type", ""))
+        label = str(gate.get("label", "")).strip()
+        value = int(gate.get("value", 0))
+        name = label or gate_type or key
+        members.append(f"{name}={value}")
+      rows.append({
+          "level": str(level),
+          "signals": ", ".join(members) if members else "—",
+          "status": (
+              "ACTIVE"
+              if level == self.generated_propagation_level
+              else (
+                  "DONE"
+                  if level < self.generated_propagation_level
+                  else "WAITING"
+              )
+          ),
+      })
+
+    self.generated_propagation_timeline = rows
+    active = rows[self.generated_propagation_level]
+    self.generated_active_level_detail = (
+        f"Level {active['level']} · {active['signals']}"
+    )
+
+  def set_generated_propagation_speed(self, value: str) -> None:
+    try:
+      speed = int(value)
+    except (TypeError, ValueError):
+      return
+    self.generated_propagation_speed_ms = max(200, min(2000, speed))
+
+  def _generated_gate_levels(self) -> dict[str, int]:
+    """Return logical propagation levels for the currently loaded circuit."""
+    levels: dict[str, int] = {}
+    pending = set(self.gate_keys)
+    for key in self.gate_keys:
+      gate = self.gates.get(key, {})
+      if gate.get("type") in {"INPUT", "CONSTANT", "CLOCK"}:
+        levels[key] = 0
+        pending.discard(key)
+
+    for _ in range(len(self.gate_keys) + 1):
+      progressed = False
+      for key in list(pending):
+        gate = self.gates.get(key, {})
+        sources: list[str] = []
+        for slot, value in gate.items():
+          if not slot.startswith("input") or not slot.endswith("_src") or not value:
+            continue
+          sources.append(str(value).split(":", 1)[0])
+        if sources and all(source in levels for source in sources):
+          levels[key] = max(levels[source] for source in sources) + 1
+          pending.discard(key)
+          progressed = True
+      if not progressed:
+        break
+
+    fallback = max(levels.values(), default=0) + 1
+    for key in pending:
+      levels[key] = fallback
+    return levels
+
+  def start_generated_propagation(self) -> None:
+    if not self.generated_simulation_active or not self.gates:
+      return
+    levels = self._generated_gate_levels()
+    self.generated_propagation_active = True
+    self.generated_propagation_complete = False
+    self.generated_propagation_levels = levels
+    self.generated_propagation_level = 0
+    self.generated_propagation_max_level = max(levels.values(), default=0)
+    self.generated_propagation_progress = (
+        f"Level 0 of {self.generated_propagation_max_level}"
+    )
+    self.generated_propagation_message = (
+        "Propagation ready · inputs are level 0. Use Next level to watch the "
+        "logic wave move toward F."
+    )
+    self._refresh_generated_propagation_timeline()
+
+  def next_generated_propagation_level(self) -> None:
+    if not self.generated_propagation_active:
+      self.start_generated_propagation()
+      return
+    if self.generated_propagation_level < self.generated_propagation_max_level:
+      self.generated_propagation_level += 1
+      self.generated_propagation_progress = (
+          f"Level {self.generated_propagation_level} of "
+          f"{self.generated_propagation_max_level}"
+      )
+      if self.generated_propagation_level >= self.generated_propagation_max_level:
+        self.generated_propagation_complete = True
+        self.generated_propagation_message = (
+            "Propagation complete · the logic wave has reached the final output F."
+        )
+      else:
+        self.generated_propagation_message = (
+            f"Propagation level {self.generated_propagation_level}/"
+            f"{self.generated_propagation_max_level} · evaluate the highlighted "
+            "gate layer and follow its output wires."
+        )
+    else:
+      self.generated_propagation_complete = True
+      self.generated_propagation_progress = (
+          f"Level {self.generated_propagation_max_level} of "
+          f"{self.generated_propagation_max_level}"
+      )
+      self.generated_propagation_message = (
+          "Propagation complete · the logic wave has reached the final output F."
+      )
+    self._refresh_generated_propagation_timeline()
+
+  def reset_generated_propagation(self) -> None:
+    self.generated_propagation_active = False
+    self.generated_propagation_complete = False
+    self.generated_propagation_level = 0
+    self.generated_propagation_levels = {}
+    self.generated_propagation_progress = ""
+    self.generated_propagation_timeline = []
+    self.generated_active_level_detail = ""
+    self.generated_propagation_message = ""
+
+  def start_generated_walkthrough(self) -> None:
+    if not self.generated_verification_rows:
+      return
+    self.generated_walkthrough_active = True
+    self.generated_walkthrough_index = 0
+    self.apply_generated_truth_row(
+        self.generated_verification_rows[0].get("inputs", "")
+    )
+
+  def next_generated_walkthrough(self) -> None:
+    if not self.generated_verification_rows:
+      return
+    next_index = min(
+        self.generated_walkthrough_index + 1,
+        len(self.generated_verification_rows) - 1,
+    )
+    self.generated_walkthrough_index = next_index
+    self.generated_walkthrough_active = True
+    self.apply_generated_truth_row(
+        self.generated_verification_rows[next_index].get("inputs", "")
+    )
+
+  def previous_generated_walkthrough(self) -> None:
+    if not self.generated_verification_rows:
+      return
+    previous_index = max(self.generated_walkthrough_index - 1, 0)
+    self.generated_walkthrough_index = previous_index
+    self.generated_walkthrough_active = True
+    self.apply_generated_truth_row(
+        self.generated_verification_rows[previous_index].get("inputs", "")
+    )
+
+  def stop_generated_walkthrough(self) -> None:
+    self.generated_walkthrough_active = False
+
+  def apply_generated_truth_row(self, inputs_text: str) -> None:
+    """Drive the live generated circuit from one verification-table row."""
+    if not self.generated_simulation_active:
+      return
+    text = str(inputs_text or "").strip()
+    if not text:
+      return
+
+    assignments: dict[str, int] = {}
+    for item in text.replace(",", " ").split():
+      if "=" not in item:
+        continue
+      name, raw = item.split("=", 1)
+      name = name.strip()
+      raw = raw.strip()
+      if name and raw in {"0", "1"}:
+        assignments[name] = int(raw)
+
+    if not assignments:
+      return
+
+    updated = copy.deepcopy(self.gates)
+    changed = False
+    for gate in updated.values():
+      if gate.get("type") != "INPUT":
+        continue
+      label = str(gate.get("label", "")).strip()
+      if label in assignments:
+        gate["value"] = assignments[label]
+        changed = True
+
+    if changed:
+      self.generated_active_truth_inputs = "  ".join(
+          f"{name}={assignments[name]}" for name in sorted(assignments)
+      )
+      evaluated = self.run_circuit_evaluation(updated, record_history=False)
+      output_values = [
+          int(gate.get("value", 0))
+          for gate in evaluated.values()
+          if gate.get("type") == "OUTPUT"
+      ]
+      output_value = output_values[0] if output_values else 0
+      input_summary = ", ".join(
+          f"{name}={assignments[name]}" for name in sorted(assignments)
+      )
+      self.generated_step_explanation = (
+          f"With {input_summary}, the generated {self.generated_simulation_mode} "
+          f"network evaluates to F={output_value}. Follow the highlighted HIGH/LOW "
+          "wires and N-net values from the inputs toward F."
+      )
+      if self.generated_propagation_active:
+        self._refresh_generated_propagation_timeline()
+
+  def verify_generated_circuit(self) -> None:
+    """Verify the transferred gate network against the source truth table."""
+    if not self.generated_simulation_active or not self.generated_simulation_expression:
+      self.generated_verification_rows = []
+      self.generated_verification_status = ""
+      self.generated_verification_summary = ""
+      return
+
+    presets = {
+        "AUTO": RealizationPreset.AUTO,
+        "BASIC_ONLY": RealizationPreset.BASIC_ONLY,
+        "NAND_ONLY": RealizationPreset.NAND_ONLY,
+        "NOR_ONLY": RealizationPreset.NOR_ONLY,
+    }
+    try:
+      result = realize_preset(
+          self.generated_simulation_expression,
+          presets.get(self.generated_simulation_mode, RealizationPreset.AUTO),
+          objective=OptimizationObjective.BALANCED,
+      )
+      project = circuit_graph_to_simulator_project(result.graph)
+      truth = generate_truth_table(
+          self.generated_simulation_expression,
+          include_intermediate=False,
+          max_variables=6,
+      )
+    except (ValueError, KeyError):
+      self.generated_verification_rows = []
+      self.generated_verification_status = "ERROR"
+      self.generated_verification_summary = "Verification could not be completed."
+      return
+
+    input_keys = {
+        str(gate.get("label", "")): key
+        for key, gate in project["gates"].items()
+        if gate.get("type") == "INPUT"
+    }
+    rows: list[dict[str, str]] = []
+    all_match = True
+
+    for truth_row in truth.rows:
+      gates = copy.deepcopy(project["gates"])
+      assignments = []
+      for variable in truth.variables:
+        bit = int(truth_row[variable])
+        assignments.append(f"{variable}={bit}")
+        if variable in input_keys:
+          gates[input_keys[variable]]["value"] = bit
+
+      evaluated = evaluate_circuit(gates)
+      output_values = [
+          int(gate.get("value", 0))
+          for gate in evaluated.values()
+          if gate.get("type") == "OUTPUT"
+      ]
+      simulated = output_values[0] if output_values else 0
+      expected = int(truth_row["F"])
+      matched = simulated == expected
+      all_match = all_match and matched
+
+      rows.append({
+          "inputs": "  ".join(assignments),
+          "simulated": str(simulated),
+          "expected": str(expected),
+          "status": "PASS" if matched else "FAIL",
+      })
+
+    self.generated_verification_rows = rows
+    self.generated_verification_status = "VERIFIED" if all_match else "MISMATCH"
+    self.generated_verification_summary = (
+        f"{len(rows)}/{len(rows)} combinations match"
+        if all_match
+        else f"{sum(1 for row in rows if row['status'] == 'PASS')}/{len(rows)} combinations match"
+    )
+
+  def load_generated_circuit_request(self, data: dict):
+    data = _decode_callback_payload(data)
+    """Load a Circuit Generator realization into the live simulator canvas."""
+    if not isinstance(data, dict):
+      return
+    expression = str(data.get("expression", "")).strip()
+    mode = str(data.get("mode", "AUTO")).strip().upper()
+    if not expression:
+      return
+
+    presets = {
+        "AUTO": RealizationPreset.AUTO,
+        "BASIC_ONLY": RealizationPreset.BASIC_ONLY,
+        "NAND_ONLY": RealizationPreset.NAND_ONLY,
+        "NOR_ONLY": RealizationPreset.NOR_ONLY,
+    }
+    preset = presets.get(mode, RealizationPreset.AUTO)
+    try:
+      result = realize_preset(
+          expression, preset, objective=OptimizationObjective.BALANCED
+      )
+      project = circuit_graph_to_simulator_project(result.graph)
+    except (ValueError, KeyError):
+      return
+
+    # A generator -> simulator transfer is a fresh workspace, not an undoable
+    # edit to whatever happened to be on the previous canvas.
+    self.gates = {}
+    self.gate_keys = []
+    self.wire_offsets = {}
+    self.annotations = {}
+    self.annotation_keys = []
+    self.history_stack = []
+    self.redo_stack = []
+    self.import_project_data(project)
+    self.history_stack = []
+    self.redo_stack = []
+    self.pan_x = 0.0
+    self.pan_y = 0.0
+    self.zoom = 1.0
+    self.generated_simulation_active = True
+    self.generated_simulation_expression = expression
+    self.generated_simulation_mode = mode
+    self.generated_active_truth_inputs = ""
+    self.generated_walkthrough_index = 0
+    self.generated_walkthrough_active = False
+    self.generated_step_explanation = ""
+    self.clear_generated_gate_inspector()
+    self.reset_generated_propagation()
+    self.verify_generated_circuit()
 
   # Email registration required before project saving.
   def import_project_data(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
 
@@ -333,6 +827,7 @@ class State(rx.State):
       self.gates = updated
 
   def tick_clock_by_key(self, key: str):
+    key = _decode_callback_payload(key)
     if key in self.gates and self.gates[key]["type"] == "CLK":
       updated = copy.deepcopy(self.gates)
       curr = updated[key].get("value", 0)
@@ -458,11 +953,13 @@ class State(rx.State):
 
     updated[key] = gate_dict
     self.gate_keys.append(key)
+    self.selected_gate_key = key
     self.selected_gate_type = ""
     self.wiring_source = ""
     self.run_circuit_evaluation(updated, record_history=False)
 
   def drop_gate_at_location(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     gate_type = data.get("type", "")
@@ -515,11 +1012,13 @@ class State(rx.State):
 
     updated[key] = gate_dict
     self.gate_keys.append(key)
+    self.selected_gate_key = key
     self.selected_gate_type = ""
     self.wiring_source = ""
     self.run_circuit_evaluation(updated, record_history=False)
 
   def handle_canvas_click(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
 
@@ -555,12 +1054,14 @@ class State(rx.State):
     })
 
   def handle_pan_end(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     self.pan_x = float(data.get("panX", self.pan_x))
     self.pan_y = float(data.get("panY", self.pan_y))
 
   def handle_view_change(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     self.pan_x = float(data.get("panX", self.pan_x))
@@ -568,6 +1069,7 @@ class State(rx.State):
     self.zoom = max(0.25, min(2.0, float(data.get("zoom", self.zoom))))
 
   def handle_gate_drag_end(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     key = data.get("key")
@@ -581,6 +1083,7 @@ class State(rx.State):
       self.run_circuit_evaluation(updated, record_history=False)
 
   def handle_wire_drag_end(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     wire_id = data.get("wire_id")
@@ -592,6 +1095,7 @@ class State(rx.State):
       self.recalculate_all_wires()
 
   def delete_gate_by_key(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     key = data.get("key")
@@ -599,6 +1103,7 @@ class State(rx.State):
       self.delete_gate(key)
 
   def select_gate_by_key(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     key = data.get("key")
@@ -606,6 +1111,7 @@ class State(rx.State):
       self.handle_gate_click(key)
 
   def toggle_input_by_key(self, data: dict):
+    data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
       return
     key = data.get("key")
@@ -724,6 +1230,7 @@ class State(rx.State):
       self.push_undo_state()
     self.gates = evaluate_circuit(updated_gates)
     self.recalculate_all_wires()
+    return self.gates
 
   def recalculate_all_wires(self):
     new_wires = []
@@ -904,7 +1411,7 @@ class State(rx.State):
         gate[f"_connected_port_{port_name}"] = True
 
     self.gates = updated_gates
-    self.wires_list = new_wires
+    self.wires_list = add_crossing_bridges(new_wires)
 
 
 # =============================================================================
@@ -1871,14 +2378,14 @@ def vec_demux_1_4() -> rx.Component:
 
 def vec_decoder_2_4() -> rx.Component:
   return vec_functional_block(
-      "2→4 DEC", (),
+      "2->4 DEC", (),
       (("Y0", 18), ("Y1", 38), ("Y2", 58), ("Y3", 78)), 130, 96, (("A0", 50), ("A1", 80)),
   )
 
 
 def vec_encoder_4_2() -> rx.Component:
   return vec_functional_block(
-      "4→2 ENC", (("D0", 18), ("D1", 38), ("D2", 58), ("D3", 78)),
+      "4->2 ENC", (("D0", 18), ("D1", 38), ("D2", 58), ("D3", 78)),
       (("A0", 34), ("A1", 64)), 130, 96,
   )
 
@@ -2295,6 +2802,8 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   g_data = State.gates[cell_key]
   g_type = g_data["type"]
   g_label = g_data["label"]
+  generated_net = g_data.get("generated_net", "")
+  generated_expression = g_data.get("generated_expression", "")
   clock_mode = g_data.get("clock_mode", "manual")
   clock_interval = g_data.get("clock_interval", 1)
   seg_a = g_data.get("seg_a", 0)
@@ -2330,6 +2839,17 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
   has_qbar_connection = g_data.get("_connected_port_q_bar", False)
   is_selected = State.selected_gate_key == cell_key
   is_on = g_data["value"] == 1
+  propagation_level = State.generated_propagation_levels.get(cell_key, -1)
+  propagation_is_active = (
+      State.generated_simulation_active
+      & State.generated_propagation_active
+      & (propagation_level == State.generated_propagation_level)
+  )
+  propagation_is_reached = (
+      State.generated_simulation_active
+      & State.generated_propagation_active
+      & (propagation_level <= State.generated_propagation_level)
+  )
 
   num_inputs = g_data["num_inputs"]
   is_variable_gate = (
@@ -2575,6 +3095,98 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
 
   return rx.box(
       rx.cond(
+          State.generated_simulation_active
+          & (~is_input)
+          & (~is_output)
+          & (g_label != ""),
+          rx.box(
+              rx.hstack(
+                  rx.text(
+                      g_label,
+                      font_size="10px",
+                      font_weight="900",
+                      color="#0f172a",
+                  ),
+                  rx.text("=", font_size="10px", font_weight="800", color="#64748b"),
+                  rx.badge(
+                      g_data["value"].to_string(),
+                      color_scheme=rx.cond(is_on, "red", "gray"),
+                      variant="solid",
+                      size="1",
+                  ),
+                  spacing="1",
+                  align="center",
+              ),
+              title=generated_expression,
+              position="absolute",
+              top="-22px",
+              left="50%",
+              transform="translateX(-50%)",
+              padding="2px 5px",
+              border="1px solid #cbd5e1",
+              border_radius="5px",
+              background="rgba(255,255,255,0.96)",
+              white_space="nowrap",
+              z_index="28",
+              pointer_events="none",
+          ),
+          rx.fragment(),
+      ),
+      rx.cond(
+          State.generated_simulation_active & is_output,
+          rx.box(
+              rx.hstack(
+                  rx.text(
+                      g_label,
+                      font_size="11px",
+                      font_weight="900",
+                      color="#0f172a",
+                  ),
+                  rx.text("=", font_size="11px", font_weight="800", color="#64748b"),
+                  rx.badge(
+                      g_data["value"].to_string(),
+                      color_scheme=rx.cond(is_on, "red", "gray"),
+                      variant="solid",
+                      size="1",
+                  ),
+                  spacing="1",
+                  align="center",
+              ),
+              position="absolute",
+              top="-25px",
+              left="50%",
+              transform="translateX(-50%)",
+              padding="3px 7px",
+              border="1px solid #93c5fd",
+              border_radius="6px",
+              background="rgba(239,246,255,0.98)",
+              white_space="nowrap",
+              z_index="29",
+              pointer_events="none",
+          ),
+          rx.fragment(),
+      ),
+      rx.cond(
+          propagation_is_active,
+          rx.box(
+              rx.badge(
+                  "ACTIVE LEVEL ",
+                  State.generated_propagation_level.to_string(),
+                  color_scheme="purple",
+                  variant="solid",
+                  size="1",
+              ),
+              position="absolute",
+              bottom="-22px",
+              left="50%",
+              transform="translateX(-50%)",
+              z_index="31",
+              white_space="nowrap",
+              pointer_events="none",
+          ),
+          rx.fragment(),
+      ),
+      rx.cond(
           is_selected
           & (~is_input)
           & (~is_output)
@@ -2649,6 +3261,19 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
               "width": "100%",
               "height": "100%",
               "pointerEvents": "none",
+              "filter": rx.cond(
+                  propagation_is_active,
+                  "drop-shadow(0 0 9px rgba(124,58,237,0.95))",
+                  rx.cond(
+                      propagation_is_reached,
+                      "drop-shadow(0 0 4px rgba(59,130,246,0.45))",
+                      "none",
+                  ),
+              ),
+              "transform": rx.cond(
+                  propagation_is_active, "scale(1.06)", "scale(1)"
+              ),
+              "transition": "filter 0.18s ease, transform 0.18s ease",
           },
           class_name=rx.cond(is_input, "input-toggle-btn", ""),
           cursor=rx.cond(is_input, "pointer", "inherit"),
@@ -2872,11 +3497,27 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
       box_shadow="none",
       cursor=rx.cond(State.is_delete_mode, "crosshair", "grab"),
       user_select="none",
+      on_click=rx.cond(
+          State.generated_simulation_active,
+          State.inspect_generated_gate(cell_key),
+          State.handle_gate_click(cell_key),
+      ),
       style={"pointerEvents": "auto"},
   )
 
 
 def render_wire_path(w: rx.Var) -> rx.Component:
+  source_level = State.generated_propagation_levels.get(w["src_key"], -1)
+  propagation_wire_active = (
+      State.generated_simulation_active
+      & State.generated_propagation_active
+      & (source_level == State.generated_propagation_level)
+  )
+  propagation_wire_reached = (
+      State.generated_simulation_active
+      & State.generated_propagation_active
+      & (source_level <= State.generated_propagation_level)
+  )
   return rx.el.svg.g(
       rx.cond(
           w["is_branched"] == "true",
@@ -2914,13 +3555,29 @@ def render_wire_path(w: rx.Var) -> rx.Component:
           _hover={"stroke": "rgba(37, 99, 235, 0.4)"},
       ),
       rx.el.svg.path(
-          d=w["d"],
-          stroke=w["color"],
-          stroke_width="2.5",
+          d=w["display_d"],
+          stroke=rx.cond(
+              propagation_wire_active,
+              "#7c3aed",
+              w["color"],
+          ),
+          stroke_width=rx.cond(
+              propagation_wire_active,
+              "5",
+              rx.cond(propagation_wire_reached, "3.2", "2.5"),
+          ),
           fill="none",
           stroke_linecap="round",
           class_name="wire-visible-line",
-          style={"pointerEvents": "none"},
+          style={
+              "pointerEvents": "none",
+              "filter": rx.cond(
+                  propagation_wire_active,
+                  "drop-shadow(0 0 5px rgba(124,58,237,0.8))",
+                  "none",
+              ),
+              "transition": "stroke 0.18s ease, stroke-width 0.18s ease",
+          },
       ),
   )
 
@@ -3047,7 +3704,7 @@ def index() -> rx.Component:
           id="drop-trigger-btn",
           style={"display": "none"},
           on_click=rx.call_script(
-              "window.__getDroppedGate ? window.__getDroppedGate() : null",
+              "JSON.stringify(window.__getDroppedGate ? window.__getDroppedGate() : null)",
               callback=State.drop_gate_at_location,
           ),
       ),
@@ -3055,7 +3712,7 @@ def index() -> rx.Component:
           id="drag-end-trigger-btn",
           style={"display": "none"},
           on_click=rx.call_script(
-              "window.__getDragEndData ? window.__getDragEndData() : null",
+              "JSON.stringify(window.__getDragEndData ? window.__getDragEndData() : null)",
               callback=State.handle_gate_drag_end,
           ),
       ),
@@ -3063,7 +3720,7 @@ def index() -> rx.Component:
           id="view-change-trigger-btn",
           style={"display": "none"},
           on_click=rx.call_script(
-              "window.__getViewChangeData ? window.__getViewChangeData() : null",
+              "JSON.stringify(window.__getViewChangeData ? window.__getViewChangeData() : null)",
               callback=State.handle_view_change,
           ),
       ),
@@ -3072,8 +3729,8 @@ def index() -> rx.Component:
           style={"display": "none"},
           on_click=rx.call_script(
               (
-                  "window.__getWireDragEndData ? window.__getWireDragEndData()"
-                  " : null"
+                  "JSON.stringify(window.__getWireDragEndData ? window.__getWireDragEndData()"
+                  " : null)"
               ),
               callback=State.handle_wire_drag_end,
           ),
@@ -3083,8 +3740,8 @@ def index() -> rx.Component:
           style={"display": "none"},
           on_click=rx.call_script(
               (
-                  "window.__getDeleteGateData ? window.__getDeleteGateData() :"
-                  " null"
+                  "JSON.stringify(window.__getDeleteGateData ? window.__getDeleteGateData() :"
+                  " null)"
               ),
               callback=State.delete_gate_by_key,
           ),
@@ -3094,8 +3751,8 @@ def index() -> rx.Component:
           style={"display": "none"},
           on_click=rx.call_script(
               (
-                  "window.__getSelectGateData ? window.__getSelectGateData() :"
-                  " null"
+                  "JSON.stringify(window.__getSelectGateData ? window.__getSelectGateData() :"
+                  " null)"
               ),
               callback=State.select_gate_by_key,
           ),
@@ -3105,8 +3762,8 @@ def index() -> rx.Component:
           style={"display": "none"},
           on_click=rx.call_script(
               (
-                  "window.__getToggleInputData ? window.__getToggleInputData()"
-                  " : null"
+                  "JSON.stringify(window.__getToggleInputData ? window.__getToggleInputData()"
+                  " : null)"
               ),
               callback=State.toggle_input_by_key,
           ),
@@ -3115,7 +3772,7 @@ def index() -> rx.Component:
           id="clock-tick-key-btn",
           style={"display": "none"},
           on_click=rx.call_script(
-              "window.__getClockTickKey ? window.__getClockTickKey() : null",
+              "JSON.stringify(window.__getClockTickKey ? window.__getClockTickKey() : null)",
               callback=State.tick_clock_by_key,
           ),
       ),
@@ -3155,10 +3812,55 @@ def index() -> rx.Component:
           on_click=State.redo,
       ),
       rx.button(
+          id="propagation-next-trigger-btn",
+          style={"display": "none"},
+          on_click=State.next_generated_propagation_level,
+      ),
+      rx.box(
+          id="propagation-completion-watch",
+          width="0px",
+          height="0px",
+          overflow="hidden",
+          custom_attrs={
+              "data-propagation-complete":
+                  State.generated_propagation_complete.to_string()
+          },
+          on_mount=rx.call_script(
+              """
+              (() => {
+                const watch = document.getElementById('propagation-completion-watch');
+                if (!watch || watch.__completionObserver) return;
+                const stopIfComplete = () => {
+                  if (watch.getAttribute('data-propagation-complete') === 'true'
+                      && window.__boolnexaPropagationTimer) {
+                    clearInterval(window.__boolnexaPropagationTimer);
+                    window.__boolnexaPropagationTimer = null;
+                  }
+                };
+                const observer = new MutationObserver(stopIfComplete);
+                observer.observe(watch, {
+                  attributes: true,
+                  attributeFilter: ['data-propagation-complete']
+                });
+                watch.__completionObserver = observer;
+                stopIfComplete();
+              })()
+              """
+          ),
+      ),
+      rx.button(
+          id="generated-circuit-trigger-btn",
+          style={"display": "none"},
+          on_click=rx.call_script(
+              "JSON.stringify(window.__generatedCircuitRequest || null)",
+              callback=State.load_generated_circuit_request,
+          ),
+      ),
+      rx.button(
           id="import-json-trigger-btn",
           style={"display": "none"},
           on_click=rx.call_script(
-              "window.__getImportedProjectData ? window.__getImportedProjectData() : null",
+              "JSON.stringify(window.__getImportedProjectData ? window.__getImportedProjectData() : null)",
               callback=State.import_project_data,
           ),
       ),
@@ -3208,6 +3910,61 @@ def index() -> rx.Component:
                       spacing="0",
                   ),
                   rx.box(flex="1"),
+                  rx.link(
+                      rx.button(
+                          "Academy",
+                          size="1",
+                          variant="soft",
+                          color_scheme="blue",
+                          title="Open BoolNexa Academy",
+                      ),
+                      href="/academy",
+                      text_decoration="none",
+                  ),
+                  rx.link(
+                      rx.button(
+                          "Tools",
+                          size="1",
+                          variant="soft",
+                          color_scheme="gray",
+                          title="Open BoolNexa tools",
+                      ),
+                      href="/tools",
+                      text_decoration="none",
+                  ),
+                  rx.link(
+                      rx.button(
+                          "Boolean Lab",
+                          size="1",
+                          variant="soft",
+                          color_scheme="indigo",
+                          title="Open Boolean Laboratory",
+                      ),
+                      href="/tools/boolean",
+                      text_decoration="none",
+                  ),
+                  rx.link(
+                      rx.button(
+                          "Circuit Generator",
+                          size="1",
+                          variant="soft",
+                          color_scheme="violet",
+                          title="Open Logic Circuit Generator",
+                      ),
+                      href="/tools/circuit",
+                      text_decoration="none",
+                  ),
+                  rx.link(
+                      rx.button(
+                          "Number Systems",
+                          size="1",
+                          variant="soft",
+                          color_scheme="cyan",
+                          title="Open Number System Laboratory",
+                      ),
+                      href="/tools/number-systems",
+                      text_decoration="none",
+                  ),
                   rx.hstack(
                       rx.icon_button(
                           rx.icon(tag="type", size=15),
@@ -3385,8 +4142,8 @@ def index() -> rx.Component:
                       rx.el.option("1:2 Demultiplexer", value="DEMUX_1_2"),
                       rx.el.option("4:1 Multiplexer", value="MUX_4_1"),
                       rx.el.option("1:4 Demultiplexer", value="DEMUX_1_4"),
-                      rx.el.option("2→4 Decoder", value="DECODER_2_4"),
-                      rx.el.option("4→2 Encoder", value="ENCODER_4_2"),
+                      rx.el.option("2->4 Decoder", value="DECODER_2_4"),
+                      rx.el.option("4->2 Encoder", value="ENCODER_4_2"),
                       value=State.selected_msi_menu,
                       on_change=State.set_selected_msi_menu,
                       style={
@@ -3403,7 +4160,7 @@ def index() -> rx.Component:
                       },
                   ),
                   rx.text(
-                      "All pins are wireable; cascade COUT → CIN and BOUT → BIN.",
+                      "All pins are wireable; cascade COUT -> CIN and BOUT -> BIN.",
                       font_size="8px",
                       color="#64748b",
                   ),
@@ -3422,9 +4179,9 @@ def index() -> rx.Component:
               rx.vstack(
                   rx.text("BoolNexa", font_size="10px", font_weight="black", color="#0f172a"),
                   rx.text("Interactive Digital Logic Simulator", font_size="8px", color="#64748b"),
-                  rx.text("Developed by Basanta Paudyal • v1.0.0", font_size="8px", color="#64748b"),
+                  rx.text("Developed by Basanta Paudyal | v1.0.0", font_size="8px", color="#64748b"),
                   rx.text("boolnexa.sim@gmail.com", font_size="8px", color="#2563eb"),
-                  rx.text("© 2026 Basanta Paudyal", font_size="8px", color="#94a3b8"),
+                  rx.text("┬⌐ 2026 Basanta Paudyal", font_size="8px", color="#94a3b8"),
                   width="100%",
                   spacing="0",
               ),
@@ -3441,6 +4198,491 @@ def index() -> rx.Component:
           style={"overflow-y": "auto"},
       ),
       rx.box(
+          rx.cond(
+              State.generated_simulation_active,
+              rx.box(
+                  rx.hstack(
+                      rx.badge("GENERATED CIRCUIT", color_scheme="green"),
+                      rx.text(
+                          "Interactive simulation · click input blocks to toggle 0 ↔ 1",
+                          font_size="12px",
+                          font_weight="700",
+                          color="#166534",
+                      ),
+                      rx.spacer(),
+                      rx.text(
+                          State.generated_simulation_expression,
+                          font_family="monospace",
+                          font_size="12px",
+                          font_weight="800",
+                      ),
+                      rx.badge(State.generated_simulation_mode, variant="soft"),
+                      width="100%",
+                      align="center",
+                      spacing="2",
+                  ),
+                  position="absolute",
+                  top="12px",
+                  left="50%",
+                  transform="translateX(-50%)",
+                  width="min(760px, calc(100% - 40px))",
+                  padding="8px 12px",
+                  border="1px solid #86efac",
+                  border_radius="8px",
+                  background="rgba(240,253,244,0.96)",
+                  z_index="35",
+                  box_shadow="0 3px 12px rgba(15,23,42,0.10)",
+              ),
+              rx.fragment(),
+          ),
+          rx.cond(
+              State.generated_simulation_active
+              & (State.generated_verification_status != ""),
+              rx.box(
+                  rx.vstack(
+                      rx.hstack(
+                          rx.text(
+                              "Truth-table verification",
+                              font_size="12px",
+                              font_weight="900",
+                              color="#0f172a",
+                          ),
+                          rx.badge(
+                              State.generated_verification_status,
+                              color_scheme=rx.cond(
+                                  State.generated_verification_status == "VERIFIED",
+                                  "green",
+                                  "red",
+                              ),
+                              variant="solid",
+                          ),
+                          rx.text(
+                              State.generated_verification_summary,
+                              font_size="11px",
+                              color="#475569",
+                          ),
+                          rx.spacer(),
+                          rx.button(
+                              "Re-verify",
+                              size="1",
+                              variant="soft",
+                              on_click=State.verify_generated_circuit,
+                          ),
+                          width="100%",
+                          align="center",
+                          spacing="2",
+                      ),
+                      rx.hstack(
+                          rx.cond(
+                              State.generated_walkthrough_active,
+                              rx.badge(
+                                  "GUIDED WALKTHROUGH",
+                                  color_scheme="blue",
+                                  variant="soft",
+                              ),
+                              rx.badge(
+                                  "MANUAL",
+                                  color_scheme="gray",
+                                  variant="soft",
+                              ),
+                          ),
+                          rx.button(
+                              "Start",
+                              size="1",
+                              variant="soft",
+                              on_click=State.start_generated_walkthrough,
+                          ),
+                          rx.button(
+                              "◀ Previous",
+                              size="1",
+                              variant="ghost",
+                              on_click=State.previous_generated_walkthrough,
+                          ),
+                          rx.button(
+                              "Next ▶",
+                              size="1",
+                              variant="ghost",
+                              on_click=State.next_generated_walkthrough,
+                          ),
+                          rx.cond(
+                              State.generated_walkthrough_active,
+                              rx.button(
+                                  "Stop",
+                                  size="1",
+                                  variant="ghost",
+                                  color_scheme="red",
+                                  on_click=State.stop_generated_walkthrough,
+                              ),
+                              rx.fragment(),
+                          ),
+                          spacing="1",
+                          align="center",
+                          width="100%",
+                      ),
+                      rx.box(
+                          rx.vstack(
+                              rx.hstack(
+                                  rx.text(
+                                      "Signal propagation",
+                                      font_size="10px",
+                                      font_weight="900",
+                                      color="#7c3aed",
+                                  ),
+                                  rx.badge(
+                                      rx.cond(
+                                          State.generated_propagation_active,
+                                          "STEP MODE",
+                                          "READY",
+                                      ),
+                                      color_scheme="purple",
+                                      variant="soft",
+                                      size="1",
+                                  ),
+                                  rx.spacer(),
+                                  rx.button(
+                                      "Start propagation",
+                                      size="1",
+                                      variant="soft",
+                                      color_scheme="purple",
+                                      on_click=State.start_generated_propagation,
+                                  ),
+                                  rx.button(
+                                      "Next level ▶",
+                                      size="1",
+                                      variant="ghost",
+                                      on_click=State.next_generated_propagation_level,
+                                  ),
+                                  rx.select(
+                                      ["250", "500", "700", "1000", "1500"],
+                                      value=State.generated_propagation_speed_ms.to_string(),
+                                      on_change=State.set_generated_propagation_speed,
+                                      size="1",
+                                      width="78px",
+                                  ),
+                                  rx.button(
+                                      "Auto Play",
+                                      size="1",
+                                      variant="soft",
+                                      color_scheme="purple",
+                                      on_click=rx.call_script(
+                                          """
+                                          (() => {
+                                            if (window.__boolnexaPropagationTimer) {
+                                              clearInterval(window.__boolnexaPropagationTimer);
+                                              window.__boolnexaPropagationTimer = null;
+                                            }
+                                            const speed = Number(
+                                              document.querySelector(
+                                                '[data-propagation-speed]'
+                                              )?.getAttribute('data-propagation-speed')
+                                              || 700
+                                            );
+                                            const clickNext = () => {
+                                              const btn = document.getElementById(
+                                                'propagation-next-trigger-btn'
+                                              );
+                                              if (btn) btn.click();
+                                            };
+                                            clickNext();
+                                            window.__boolnexaPropagationTimer =
+                                              setInterval(clickNext, speed);
+                                          })()
+                                          """
+                                      ),
+                                  ),
+                                  rx.button(
+                                      "Pause",
+                                      size="1",
+                                      variant="ghost",
+                                      on_click=rx.call_script(
+                                          """
+                                          (() => {
+                                            if (window.__boolnexaPropagationTimer) {
+                                              clearInterval(window.__boolnexaPropagationTimer);
+                                              window.__boolnexaPropagationTimer = null;
+                                            }
+                                          })()
+                                          """
+                                      ),
+                                  ),
+                                  rx.button(
+                                      "Reset",
+                                      size="1",
+                                      variant="ghost",
+                                      on_click=[
+                                          rx.call_script(
+                                              """
+                                              (() => {
+                                                if (window.__boolnexaPropagationTimer) {
+                                                  clearInterval(window.__boolnexaPropagationTimer);
+                                                  window.__boolnexaPropagationTimer = null;
+                                                }
+                                              })()
+                                              """
+                                          ),
+                                          State.reset_generated_propagation,
+                                      ],
+                                  ),
+                                  width="100%",
+                                  align="center",
+                                  spacing="1",
+                              ),
+                              rx.hstack(
+                                  rx.cond(
+                                      State.generated_propagation_progress != "",
+                                      rx.badge(
+                                          State.generated_propagation_progress,
+                                          color_scheme="purple",
+                                          variant="soft",
+                                          size="1",
+                                      ),
+                                      rx.fragment(),
+                                  ),
+                                  rx.cond(
+                                      State.generated_propagation_complete,
+                                      rx.badge(
+                                          "COMPLETE",
+                                          color_scheme="green",
+                                          variant="solid",
+                                          size="1",
+                                      ),
+                                      rx.fragment(),
+                                  ),
+                                  spacing="1",
+                                  align="center",
+                              ),
+                              rx.cond(
+                                  State.generated_propagation_message != "",
+                                  rx.text(
+                                      State.generated_propagation_message,
+                                      font_size="10px",
+                                      color="#5b21b6",
+                                  ),
+                                  rx.fragment(),
+                              ),
+                              rx.cond(
+                                  State.generated_active_level_detail != "",
+                                  rx.box(
+                                      rx.text(
+                                          State.generated_active_level_detail,
+                                          font_family="monospace",
+                                          font_size="10px",
+                                          font_weight="800",
+                                          color="#4c1d95",
+                                      ),
+                                      padding="4px 6px",
+                                      border="1px solid #c4b5fd",
+                                      border_radius="5px",
+                                      background="#ede9fe",
+                                      width="100%",
+                                  ),
+                                  rx.fragment(),
+                              ),
+                              rx.box(
+                                  rx.foreach(
+                                      State.generated_propagation_timeline,
+                                      lambda item: rx.hstack(
+                                          rx.badge(
+                                              "L" + item["level"],
+                                              color_scheme=rx.cond(
+                                                  item["status"] == "ACTIVE",
+                                                  "purple",
+                                                  rx.cond(
+                                                      item["status"] == "DONE",
+                                                      "green",
+                                                      "gray",
+                                                  ),
+                                              ),
+                                              variant=rx.cond(
+                                                  item["status"] == "ACTIVE",
+                                                  "solid",
+                                                  "soft",
+                                              ),
+                                              size="1",
+                                          ),
+                                          rx.text(
+                                              item["signals"],
+                                              font_family="monospace",
+                                              font_size="9px",
+                                              color="#475569",
+                                          ),
+                                          rx.spacer(),
+                                          rx.text(
+                                              item["status"],
+                                              font_size="9px",
+                                              font_weight="800",
+                                              color=rx.cond(
+                                                  item["status"] == "ACTIVE",
+                                                  "#7c3aed",
+                                                  rx.cond(
+                                                      item["status"] == "DONE",
+                                                      "#15803d",
+                                                      "#94a3b8",
+                                                  ),
+                                              ),
+                                          ),
+                                          width="100%",
+                                          align="center",
+                                          spacing="2",
+                                      ),
+                                  ),
+                                  max_height="115px",
+                                  overflow_y="auto",
+                                  width="100%",
+                              ),
+                              spacing="1",
+                              width="100%",
+                          ),
+                          padding="7px 8px",
+                          border="1px solid #ddd6fe",
+                          border_radius="6px",
+                          background="#f5f3ff",
+                          width="100%",
+                          custom_attrs={
+                              "data-propagation-speed":
+                                  State.generated_propagation_speed_ms.to_string()
+                          },
+                      ),
+                      rx.cond(
+                          State.generated_inspector_gate_key != "",
+                          rx.box(
+                              rx.vstack(
+                                  rx.hstack(
+                                      rx.text(
+                                          "SIGNAL INSPECTOR",
+                                          font_size="10px",
+                                          font_weight="900",
+                                          color="#0369a1",
+                                      ),
+                                      rx.spacer(),
+                                      rx.button(
+                                          "Close",
+                                          size="1",
+                                          variant="ghost",
+                                          on_click=State.clear_generated_gate_inspector,
+                                      ),
+                                      width="100%",
+                                      align="center",
+                                  ),
+                                  rx.text(
+                                      State.generated_inspector_title,
+                                      font_size="11px",
+                                      font_weight="800",
+                                      color="#0f172a",
+                                  ),
+                                  rx.text(
+                                      State.generated_inspector_detail,
+                                      font_size="10px",
+                                      line_height="1.35",
+                                      color="#334155",
+                                  ),
+                                  spacing="1",
+                                  align="stretch",
+                              ),
+                              padding="7px 8px",
+                              border="1px solid #bae6fd",
+                              border_radius="6px",
+                              background="#f0f9ff",
+                              width="100%",
+                          ),
+                          rx.fragment(),
+                      ),
+                      rx.cond(
+                          State.generated_step_explanation != "",
+                          rx.box(
+                              rx.hstack(
+                                  rx.text(
+                                      "WHY?",
+                                      font_size="10px",
+                                      font_weight="900",
+                                      color="#1d4ed8",
+                                  ),
+                                  rx.text(
+                                      State.generated_step_explanation,
+                                      font_size="10px",
+                                      line_height="1.35",
+                                      color="#334155",
+                                  ),
+                                  spacing="2",
+                                  align="start",
+                              ),
+                              padding="7px 8px",
+                              border="1px solid #bfdbfe",
+                              border_radius="6px",
+                              background="#eff6ff",
+                              width="100%",
+                          ),
+                          rx.fragment(),
+                      ),
+                      rx.box(
+                          rx.foreach(
+                              State.generated_verification_rows,
+                              lambda row: rx.hstack(
+                                  rx.text(
+                                      row["inputs"],
+                                      font_family="monospace",
+                                      font_size="10px",
+                                      min_width="110px",
+                                  ),
+                                  rx.text(
+                                      "sim F=",
+                                      row["simulated"],
+                                      font_size="10px",
+                                  ),
+                                  rx.text(
+                                      "expected=",
+                                      row["expected"],
+                                      font_size="10px",
+                                  ),
+                                  rx.badge(
+                                      row["status"],
+                                      color_scheme=rx.cond(
+                                          row["status"] == "PASS", "green", "red"
+                                      ),
+                                      variant="soft",
+                                      size="1",
+                                  ),
+                                  rx.cond(
+                                      State.generated_active_truth_inputs == row["inputs"],
+                                      rx.badge(
+                                          "CURRENT",
+                                          color_scheme="blue",
+                                          variant="solid",
+                                          size="1",
+                                      ),
+                                      rx.button(
+                                          "Apply",
+                                          size="1",
+                                          variant="ghost",
+                                          on_click=State.apply_generated_truth_row(
+                                              row["inputs"]
+                                          ),
+                                      ),
+                                  ),
+                                  spacing="2",
+                                  align="center",
+                              ),
+                          ),
+                          max_height="150px",
+                          overflow_y="auto",
+                          width="100%",
+                      ),
+                      spacing="2",
+                      align="stretch",
+                  ),
+                  position="absolute",
+                  top="58px",
+                  right="16px",
+                  width="340px",
+                  padding="9px 11px",
+                  border="1px solid #cbd5e1",
+                  border_radius="8px",
+                  background="rgba(255,255,255,0.97)",
+                  z_index="34",
+                  box_shadow="0 3px 14px rgba(15,23,42,0.10)",
+              ),
+              rx.fragment(),
+          ),
           rx.box(
               rx.el.svg(
                   rx.el.svg.path(
@@ -3507,10 +4749,10 @@ def index() -> rx.Component:
               },
           ),
           rx.hstack(
-              rx.button("−", size="1", variant="soft", on_click=rx.call_script("window.__logicZoom ? window.__logicZoom(-0.1) : null", callback=State.handle_view_change), title="Zoom Out"),
-              rx.button("100%", size="1", variant="ghost", on_click=rx.call_script("window.__logicResetZoom ? window.__logicResetZoom() : null", callback=State.handle_view_change), title="Reset to 100%"),
-              rx.button("+", size="1", variant="soft", on_click=rx.call_script("window.__logicZoom ? window.__logicZoom(0.1) : null", callback=State.handle_view_change), title="Zoom In"),
-              rx.button("Fit", size="1", variant="soft", on_click=rx.call_script("window.__logicFit ? window.__logicFit() : null", callback=State.handle_view_change), title="Fit Circuit"),
+              rx.button("-", size="1", variant="soft", on_click=rx.call_script("JSON.stringify(window.__logicZoom ? window.__logicZoom(-0.1) : null)", callback=State.handle_view_change), title="Zoom Out"),
+              rx.button("100%", size="1", variant="ghost", on_click=rx.call_script("JSON.stringify(window.__logicResetZoom ? window.__logicResetZoom() : null)", callback=State.handle_view_change), title="Reset to 100%"),
+              rx.button("+", size="1", variant="soft", on_click=rx.call_script("JSON.stringify(window.__logicZoom ? window.__logicZoom(0.1) : null)", callback=State.handle_view_change), title="Zoom In"),
+              rx.button("Fit", size="1", variant="soft", on_click=rx.call_script("JSON.stringify(window.__logicFit ? window.__logicFit() : null)", callback=State.handle_view_change), title="Fit Circuit"),
               position="absolute", top="14px", right="18px", z_index="50",
               padding="6px", border="1px solid #cbd5e1", border_radius="8px",
               bg="rgba(255,255,255,0.94)", box_shadow="0 2px 8px rgba(15,23,42,0.12)", spacing="1",
@@ -3518,7 +4760,7 @@ def index() -> rx.Component:
           on_context_menu=State.cancel_active_actions,
           on_click=rx.call_script(
               """
-              (() => {
+              JSON.stringify((() => {
                   const data = window.__calcCanvasClick
                       ? window.__calcCanvasClick()
                       : {};
@@ -3526,12 +4768,12 @@ def index() -> rx.Component:
                       ...(data || {}),
                       blank_canvas: window.__dllBlankCanvasPointer === true,
                   };
-              })()
+              })())
               """,
               callback=State.handle_canvas_click,
           ),
           on_mouse_up=rx.call_script(
-              "window.__getPanData ? window.__getPanData() : null",
+              "JSON.stringify(window.__getPanData ? window.__getPanData() : null)",
               callback=State.handle_pan_end,
           ),
           id="logic-workspace",
@@ -3582,6 +4824,39 @@ def index() -> rx.Component:
                       [50, 100, 250, 500, 1000, 2000].forEach(ms => {
                           setTimeout(tryReady, ms);
                       });
+                  }
+
+                  // Circuit Generator -> Simulator hand-off.  The URL carries
+                  // only expression + realization mode; Python rebuilds the
+                  // verified graph and imports it into the live simulator.
+                  const params = new URLSearchParams(window.location.search);
+                  const generatedExpression = params.get("generated_expression");
+                  if (generatedExpression && !window.__generatedCircuitLoaded) {
+                      window.__generatedCircuitLoaded = true;
+                      window.__generatedCircuitRequest = {
+                          expression: generatedExpression,
+                          mode: params.get("generated_mode") || "AUTO"
+                      };
+                      const fireTransfer = () => {
+                          const button = document.getElementById(
+                              "generated-circuit-trigger-btn"
+                          );
+                          if (button) {
+                              button.dispatchEvent(
+                                  new MouseEvent("click", { bubbles: true })
+                              );
+                              window.history.replaceState(
+                                  {}, document.title, window.location.pathname
+                              );
+                              return true;
+                          }
+                          return false;
+                      };
+                      if (!fireTransfer()) {
+                          [50, 100, 250, 500, 1000].forEach(ms =>
+                              setTimeout(fireTransfer, ms)
+                          );
+                      }
                   }
 
                   if (!window.__dllKeyboardShortcutsInstalled) {
@@ -3693,21 +4968,832 @@ def index() -> rx.Component:
 app = rx.App(
     head_components=[
         rx.script(src="/logic_interactions.js"),
+        *seo_head_components(),
     ],
 )
 app.add_page(
     index,
-    title="BoolNexa - Free Online Digital Logic Simulator",
-    description=(
-        "Design, connect, and simulate digital logic circuits online with BoolNexa. "
-        "Explore logic gates, flip-flops, adders, subtractors, multiplexers, "
-        "demultiplexers, encoders, and decoders for free."
-    ),
-    meta=[
-        {"name": "robots", "content": "index, follow"},
-        {"property": "og:title", "content": "BoolNexa - Free Online Digital Logic Simulator"},
-        {"property": "og:description", "content": "Design and simulate digital logic circuits online with BoolNexa."},
-        {"property": "og:type", "content": "website"},
-        {"property": "og:url", "content": "https://boolnexa-teal-ring.reflex.run/"},
-    ],
+    title=PAGE_TITLE,
+    description=PAGE_DESCRIPTION,
+    meta=seo_meta(),
 )
+app.add_page(
+    academy,
+    route="/academy",
+    title="BoolNexa Academy | Learn Digital Electronics",
+    description="Learn binary systems, Boolean algebra, logic gates, combinational and sequential circuits with interactive simulations and laboratory work.",
+)
+
+app.add_page(
+    binary_intro_lesson,
+    route="/academy/unit-1/why-computers-use-binary",
+    title="Why Computers Use Binary | BoolNexa Academy",
+    description="An interactive BoolNexa lesson using four binary switches, positional weights, a simulator challenge and knowledge check.",
+)
+
+
+app.add_page(
+    binary_place_value_lesson,
+    route="/academy/unit-1/binary-place-value",
+    title="Binary Place Value Explorer | BoolNexa Academy",
+    description="Explore 8-bit binary place values, predict decimal values, complete a practical challenge and earn XP.",
+)
+
+
+app.add_page(
+    decimal_to_binary_lesson,
+    route="/academy/unit-1/decimal-to-binary",
+    title="Decimal to Binary Conversion | BoolNexa Academy",
+    description="Learn decimal-to-binary conversion with repeated division, worked examples, interactive practice and the BoolNexa Number System Laboratory.",
+)
+
+app.add_page(
+    binary_to_decimal_lesson,
+    route="/academy/unit-1/binary-to-decimal",
+    title="Binary to Decimal Conversion | BoolNexa Academy",
+    description="Learn binary-to-decimal conversion using positional weights, worked examples, interactive practice and the BoolNexa Number System Laboratory.",
+)
+
+
+app.add_page(
+    octal_hex_lesson,
+    route="/academy/unit-1/octal-and-hexadecimal",
+    title="Octal and Hexadecimal | BoolNexa Academy",
+    description="Learn binary, octal and hexadecimal grouping with worked examples, quick practice and the BoolNexa Number System Laboratory.",
+)
+
+app.add_page(
+    binary_arithmetic_lesson,
+    route="/academy/unit-1/binary-arithmetic",
+    title="Binary Arithmetic | BoolNexa Academy",
+    description="Learn binary addition and subtraction with worked examples, interactive exercises and links to the BoolNexa Simulator.",
+)
+
+
+app.add_page(
+    signed_binary_lesson,
+    route="/academy/unit-1/signed-binary",
+    title="Signed Binary and Complements | BoolNexa Academy",
+    description="Learn signed binary, one's complement, two's complement and fixed-width signed ranges with worked examples and practice.",
+)
+
+app.add_page(
+    digital_codes_lesson,
+    route="/academy/unit-1/digital-codes",
+    title="Digital Codes | BoolNexa Academy",
+    description="Learn BCD, Gray code and character encoding with worked examples, interactive practice and links to BoolNexa tools.",
+)
+
+
+app.add_page(
+    binary_storage_lesson,
+    route="/academy/unit-1/binary-storage",
+    title="Bits, Bytes, Storage and Registers | BoolNexa Academy",
+    description="Learn how bits form bytes, words and registers, how bit width controls range, and how binary data is stored in digital systems.",
+)
+
+app.add_page(
+    binary_mastery_lesson,
+    route="/academy/unit-1/mastery-challenge",
+    title="Binary Systems Mastery Challenge | BoolNexa Academy",
+    description="Complete the BoolNexa Academy Binary Systems review with mixed conversion and signed-binary challenges before moving to Boolean logic.",
+)
+
+
+app.add_page(
+    logic_states_gates_lesson,
+    route="/academy/unit-2/logic-states-and-gates",
+    title="Digital Logic States and Gate Fundamentals | BoolNexa Academy",
+    description="Learn logic 0 and 1, LOW and HIGH states, gate fundamentals and truth tables with direct BoolNexa Simulator practice.",
+)
+
+app.add_page(
+    and_or_not_lesson,
+    route="/academy/unit-2/and-or-not",
+    title="AND, OR and NOT Gates | BoolNexa Academy",
+    description="Learn AND, OR and NOT operations using Boolean equations, truth tables, interactive checks and the BoolNexa Simulator and Boolean Lab.",
+)
+
+
+app.add_page(
+    nand_nor_lesson,
+    route="/academy/unit-2/nand-nor",
+    title="NAND and NOR Universal Gates | BoolNexa Academy",
+    description="Learn NAND and NOR truth tables, functional completeness and universal-gate implementations with interactive BoolNexa practice.",
+)
+
+app.add_page(
+    xor_xnor_lesson,
+    route="/academy/unit-2/xor-xnor",
+    title="XOR and XNOR Gates | BoolNexa Academy",
+    description="Learn XOR and XNOR truth tables, equality, parity and half-adder applications with interactive BoolNexa practice.",
+)
+
+
+app.add_page(
+    boolean_expressions_lesson,
+    route="/academy/unit-2/boolean-expressions",
+    title="Reading and Writing Boolean Expressions | BoolNexa Academy",
+    description="Translate between words, Boolean notation, truth values and gate networks with interactive BoolNexa Boolean Lab and Circuit Generator practice.",
+)
+
+app.add_page(
+    boolean_laws_lesson,
+    route="/academy/unit-2/boolean-laws",
+    title="Boolean Laws and Simplification | BoolNexa Academy",
+    description="Learn Boolean identities, De Morgan's theorems and algebraic simplification with worked examples and BoolNexa verification tools.",
+)
+
+
+app.add_page(
+    truth_tables_lesson,
+    route="/academy/unit-2/truth-tables",
+    title="Truth Tables and Function Analysis | BoolNexa Academy",
+    description="Learn systematic truth-table construction, function evaluation, equivalence and minterms with direct BoolNexa Boolean Lab verification.",
+)
+
+app.add_page(
+    expression_to_circuit_lesson,
+    route="/academy/unit-2/expression-to-circuit",
+    title="Expression-to-Circuit Design | BoolNexa Academy",
+    description="Translate Boolean expressions into gate networks step by step and verify designs using BoolNexa Circuit Generator, Simulator and Boolean Lab.",
+)
+
+
+app.add_page(
+    universal_implementation_lesson,
+    route="/academy/unit-2/universal-implementation",
+    title="Universal-Gate Implementation | BoolNexa Academy",
+    description="Convert Boolean logic into NAND-only and NOR-only implementations using De Morgan transformations and verify designs with BoolNexa tools.",
+)
+
+app.add_page(
+    boolean_mastery_lesson,
+    route="/academy/unit-2/mastery-challenge",
+    title="Boolean Algebra and Logic Gates Mastery | BoolNexa Academy",
+    description="Complete the BoolNexa Academy Boolean Algebra and Logic Gates mastery challenge using gates, truth tables, simplification and practical circuit design.",
+)
+
+
+app.add_page(
+    kmap_intro_lesson,
+    route="/academy/unit-3/kmap-introduction",
+    title="Introduction to Karnaugh Maps | BoolNexa Academy",
+    description="Learn why Karnaugh maps simplify Boolean logic, how Gray-code adjacency works and how valid groups eliminate variables.",
+)
+
+app.add_page(
+    two_variable_kmap_lesson,
+    route="/academy/unit-3/two-variable-kmaps",
+    title="Two-Variable Karnaugh Maps | BoolNexa Academy",
+    description="Learn to map two-variable truth tables into Karnaugh maps, form valid groups and derive simplified Boolean expressions.",
+)
+
+
+app.add_page(
+    three_variable_kmap_lesson,
+    route="/academy/unit-3/three-variable-kmaps",
+    title="Three-Variable Karnaugh Maps | BoolNexa Academy",
+    description="Learn eight-cell three-variable Karnaugh maps, Gray-code minterm placement, grouping and wrap-around simplification.",
+)
+
+app.add_page(
+    four_variable_kmap_lesson,
+    route="/academy/unit-3/four-variable-kmaps",
+    title="Four-Variable Karnaugh Maps | BoolNexa Academy",
+    description="Learn 4×4 Karnaugh maps, Gray-code layout, largest groups, edge wrapping, corner groups and overlap.",
+)
+
+
+app.add_page(
+    prime_implicants_lesson,
+    route="/academy/unit-3/prime-implicants",
+    title="Prime Implicants and Essential K-map Groups | BoolNexa Academy",
+    description="Learn prime implicants, essential prime implicants, overlap and efficient K-map coverage strategies.",
+)
+
+app.add_page(
+    sop_pos_dont_cares_lesson,
+    route="/academy/unit-3/sop-pos-dont-cares",
+    title="SOP, POS and Don't-Care Conditions | BoolNexa Academy",
+    description="Learn K-map minimisation in SOP and POS forms and how don't-care conditions can simplify digital logic.",
+)
+
+
+app.add_page(
+    five_variable_kmap_lesson,
+    route="/academy/unit-3/five-variable-kmaps",
+    title="Five-Variable Karnaugh Maps | BoolNexa Academy",
+    description="Learn BoolNexa's single 4×8 five-variable Karnaugh map, three-bit Gray-code ordering, reflection, wrap-around and higher-variable grouping.",
+)
+
+app.add_page(
+    six_variable_kmap_lesson,
+    route="/academy/unit-3/six-variable-kmaps",
+    title="Six-Variable Karnaugh Maps | BoolNexa Academy",
+    description="Learn BoolNexa's 8×8 six-variable Karnaugh map, reflected Gray-code axes, wrap-around and higher-dimensional grouping.",
+)
+
+
+app.add_page(
+    advanced_kmap_strategy_lesson,
+    route="/academy/unit-3/advanced-strategy",
+    title="Advanced Karnaugh Map Strategy | BoolNexa Academy",
+    description="Learn advanced K-map cover selection, essential implicants, alternative minimal covers and introductory hazard-aware grouping.",
+)
+
+app.add_page(
+    kmap_mastery_lesson,
+    route="/academy/unit-3/mastery-challenge",
+    title="Karnaugh Map Mastery Challenge | BoolNexa Academy",
+    description="Complete the BoolNexa Academy Karnaugh-map mastery challenge and verify minimised logic with real BoolNexa tools.",
+)
+
+
+app.add_page(
+    combinational_foundations_lesson,
+    route="/academy/unit-4/combinational-foundations",
+    title="Introduction to Combinational Logic | BoolNexa Academy",
+    description="Learn the combinational-logic design workflow and connect truth tables, Boolean expressions, K-maps and gate-level circuits.",
+)
+
+app.add_page(
+    adders_lesson,
+    route="/academy/unit-4/adders",
+    title="Half Adders and Full Adders | BoolNexa Academy",
+    description="Learn half adders, full adders, binary carry equations and the foundations of multi-bit ripple-carry addition.",
+)
+
+
+app.add_page(
+    subtractors_lesson,
+    route="/academy/unit-4/subtractors",
+    title="Half Subtractors and Full Subtractors | BoolNexa Academy",
+    description="Learn half and full subtractors, borrow logic, multi-bit subtraction and the two's-complement adder-subtractor principle.",
+)
+
+app.add_page(
+    comparators_lesson,
+    route="/academy/unit-4/comparators",
+    title="Digital Comparators | BoolNexa Academy",
+    description="Learn one-bit and multi-bit magnitude comparison, XNOR equality detection and practical comparator applications.",
+)
+
+
+app.add_page(
+    multiplexers_lesson,
+    route="/academy/unit-4/multiplexers",
+    title="Multiplexers | BoolNexa Academy",
+    description="Learn 2-to-1 and 4-to-1 multiplexers, select-line logic and how multiplexers implement Boolean functions.",
+)
+
+app.add_page(
+    demultiplexers_lesson,
+    route="/academy/unit-4/demultiplexers",
+    title="Demultiplexers | BoolNexa Academy",
+    description="Learn 1-to-2 and 1-to-4 demultiplexers, destination selection, routing equations and practical data-distribution applications.",
+)
+
+
+app.add_page(
+    decoders_lesson,
+    route="/academy/unit-4/decoders",
+    title="Binary Decoders | BoolNexa Academy",
+    description="Learn 2-to-4 and 3-to-8 binary decoders, enable inputs, minterm generation and decoder-based Boolean-function implementation.",
+)
+
+app.add_page(
+    encoders_lesson,
+    route="/academy/unit-4/encoders",
+    title="Encoders and Priority Encoders | BoolNexa Academy",
+    description="Learn binary encoders, one-hot assumptions, priority encoding, valid-output signals and practical arbitration applications.",
+)
+
+
+app.add_page(
+    integrated_combinational_design_lesson,
+    route="/academy/unit-4/integrated-design",
+    title="Integrated Combinational Design | BoolNexa Academy",
+    description="Combine arithmetic, comparison, selection and decoding blocks using a disciplined specification-to-verification design workflow.",
+)
+
+app.add_page(
+    combinational_mastery_lesson,
+    route="/academy/unit-4/mastery-challenge",
+    title="Combinational Logic Mastery Challenge | BoolNexa Academy",
+    description="Complete the BoolNexa combinational-logic capstone by selecting building blocks, deriving equations and verifying an integrated digital design.",
+)
+
+
+app.add_page(
+    sequential_foundations_lesson,
+    route="/academy/unit-5/sequential-foundations",
+    title="Sequential Logic, State and Time | BoolNexa Academy",
+    description="Learn memory, present and next state, feedback, timing, latches and clocks.",
+)
+
+app.add_page(
+    latches_lesson,
+    route="/academy/unit-5/latches",
+    title="SR Latches and D Latches | BoolNexa Academy",
+    description="Learn NOR SR latches, invalid conditions, D latches and transparency.",
+)
+
+
+app.add_page(
+    flipflops_lesson,
+    route="/academy/unit-5/flip-flops",
+    title="D, JK and T Flip-Flops | BoolNexa Academy",
+    description="Learn edge-triggered D, JK and T flip-flops, characteristic and excitation behaviour, and asynchronous controls.",
+)
+
+app.add_page(
+    clock_timing_lesson,
+    route="/academy/unit-5/clock-timing",
+    title="Clocking, Setup/Hold Time and Metastability | BoolNexa Academy",
+    description="Learn clock timing, setup and hold requirements, clock-to-Q delay, metastability and synchronizers.",
+)
+
+
+app.add_page(
+    registers_lesson,
+    route="/academy/unit-5/registers",
+    title="Registers and Shift Registers | BoolNexa Academy",
+    description="Learn parallel registers, SISO/SIPO/PISO/PIPO shift registers, shifting, universal registers and practical data movement.",
+)
+
+app.add_page(
+    counters_lesson,
+    route="/academy/unit-5/counters",
+    title="Binary Counters | BoolNexa Academy",
+    description="Learn binary and modulo-N counters, ripple and synchronous designs, frequency division and programmable counting.",
+)
+
+
+app.add_page(
+    fsm_foundations_lesson,
+    route="/academy/unit-5/fsm",
+    title="Finite-State Machines | BoolNexa Academy",
+    description="Learn states, transitions, state diagrams and tables, Moore and Mealy machines, and the hardware structure of synchronous FSMs.",
+)
+
+app.add_page(
+    fsm_design_lesson,
+    route="/academy/unit-5/fsm-design",
+    title="Practical FSM Design | BoolNexa Academy",
+    description="Turn behavioural requirements into states, encodings, next-state logic and verified finite-state-machine controllers.",
+)
+
+
+app.add_page(
+    sequential_integration_lesson,
+    route="/academy/unit-5/integrated-design",
+    title="Integrated Sequential-System Design | BoolNexa Academy",
+    description="Combine state machines, registers, counters, datapaths and timing constraints into a complete synchronous digital controller.",
+)
+
+app.add_page(
+    sequential_mastery_lesson,
+    route="/academy/unit-5/mastery-challenge",
+    title="Sequential Logic Mastery Challenge | BoolNexa Academy",
+    description="Complete the sequential-logic capstone with storage, timing, counters, FSMs and a safety-oriented controller design.",
+)
+
+
+app.add_page(
+    memory_foundations_lesson,
+    route="/academy/unit-6/memory-foundations",
+    title="Digital Memory Foundations | BoolNexa Academy",
+    description="Learn memory words, width, depth, addressing, capacity, volatility and the digital memory hierarchy.",
+)
+
+app.add_page(
+    ram_rom_lesson,
+    route="/academy/unit-6/ram-rom",
+    title="RAM, ROM and Memory Operations | BoolNexa Academy",
+    description="Learn RAM and ROM organisation, ROM families, memory reads and writes, access time and memory timing.",
+)
+
+app.add_page(
+    sram_dram_lesson,
+    route="/academy/unit-6/sram-dram",
+    title="SRAM vs DRAM | BoolNexa Academy",
+    description="Compare SRAM and DRAM storage cells, refresh behaviour, density, cost, latency and common system roles.",
+)
+
+app.add_page(
+    memory_organisation_lesson,
+    route="/academy/unit-6/memory-organisation",
+    title="Memory Addressing, Organisation and Expansion | BoolNexa Academy",
+    description="Learn memory depth and width notation, address-line sizing, chip-select decoding, address maps and memory expansion.",
+)
+
+app.add_page(
+    cache_memory_lesson,
+    route="/academy/unit-6/cache-memory",
+    title="Cache Memory and Locality | BoolNexa Academy",
+    description="Learn why caches work, temporal and spatial locality, cache lines, hits, misses and average memory access time.",
+)
+
+app.add_page(
+    cache_mapping_lesson,
+    route="/academy/unit-6/cache-mapping",
+    title="Cache Mapping, Hits and Misses | BoolNexa Academy",
+    description="Learn direct, set-associative and fully associative cache mapping, tags, miss categories, replacement and write policies.",
+)
+
+
+app.add_page(
+    virtual_memory_lesson,
+    route="/academy/unit-6/virtual-memory",
+    title="Virtual Memory and Address Translation | BoolNexa Academy",
+    description="Learn virtual and physical addresses, pages, frames, page tables, TLBs and page faults.",
+)
+
+app.add_page(
+    memory_reliability_lesson,
+    route="/academy/unit-6/memory-reliability",
+    title="Memory Reliability, Parity and ECC | BoolNexa Academy",
+    description="Learn memory error detection and correction fundamentals, parity, syndromes, ECC and SECDED.",
+)
+
+
+app.add_page(
+    memory_hierarchy_performance_lesson,
+    route="/academy/unit-6/memory-hierarchy-performance",
+    title="Memory Hierarchy and Performance | BoolNexa Academy",
+    description="Learn memory hierarchy, latency, bandwidth, locality and average memory access time.",
+)
+
+app.add_page(
+    memory_system_integration_lesson,
+    route="/academy/unit-6/memory-system-integration",
+    title="Memory System Integration | BoolNexa Academy",
+    description="Integrate memory cells, organisation, cache, virtual memory, reliability and performance in the Path 06 finale.",
+)
+
+
+app.add_page(
+    registers_parallel_storage_lesson,
+    route="/academy/unit-7/registers-parallel-storage",
+    title="Registers and Parallel Data Storage | BoolNexa Academy",
+    description="Learn register width, parallel loading, load enable, hold behaviour and datapath storage.",
+)
+
+app.add_page(
+    shift_registers_data_movement_lesson,
+    route="/academy/unit-7/shift-registers",
+    title="Shift Registers and Data Movement | BoolNexa Academy",
+    description="Learn SISO, SIPO, PISO and PIPO shift-register modes, serial/parallel conversion and bidirectional shifting.",
+)
+
+
+app.add_page(
+    ripple_counters_frequency_division_lesson,
+    route="/academy/unit-7/ripple-counters",
+    title="Ripple Counters and Frequency Division | BoolNexa Academy",
+    description="Learn asynchronous ripple counting, propagation delay, modulus and frequency division.",
+)
+
+app.add_page(
+    synchronous_counters_modulo_n_lesson,
+    route="/academy/unit-7/synchronous-counters",
+    title="Synchronous Counters and Modulo-N Design | BoolNexa Academy",
+    description="Learn common-clock synchronous counters, binary count logic, modulo-N design and state sequencing.",
+)
+
+
+app.add_page(
+    up_down_programmable_counters_lesson,
+    route="/academy/unit-7/up-down-programmable-counters",
+    title="Up Down and Programmable Counters | BoolNexa Academy",
+    description="Learn bidirectional counting, enable, parallel load, terminal count and counter cascading.",
+)
+
+app.add_page(
+    timing_sequences_counter_control_lesson,
+    route="/academy/unit-7/timing-sequences",
+    title="Timing Sequences and Counter Based Control | BoolNexa Academy",
+    description="Learn counter-state decoding, one-hot timing outputs and counter-based digital control sequencing.",
+)
+
+
+app.add_page(
+    register_counter_integration_capstone_lesson,
+    route="/academy/unit-7/register-counter-integration",
+    title="Register Counter System Integration | BoolNexa Academy",
+    description="Complete Path 07 by integrating registers, shift registers, counters, timing sequences and controller design.",
+)
+
+
+app.add_page(
+    binary_addition_subtraction_lesson,
+    route="/academy/unit-8/binary-arithmetic-hardware",
+    title="Binary Addition, Subtraction and Arithmetic Hardware | BoolNexa Academy",
+    description="Learn binary addition, carry paths, two's-complement subtraction and the arithmetic hardware foundation of an ALU.",
+)
+
+app.add_page(
+    carry_overflow_status_flags_lesson,
+    route="/academy/unit-8/carry-overflow-flags",
+    title="Carry, Overflow and Status Flags | BoolNexa Academy",
+    description="Learn unsigned carry, signed overflow, zero and negative flags, subtraction conventions and status registers.",
+)
+
+app.add_page(
+    fast_adder_architectures_lesson,
+    route="/academy/unit-8/fast-adders",
+    title="Fast Adder Architectures | BoolNexa Academy",
+    description="Compare ripple-carry, carry-lookahead and parallel-prefix adders and understand the timing trade-offs behind fast ALU arithmetic.",
+)
+
+app.add_page(
+    arithmetic_operations_datapaths_lesson,
+    route="/academy/unit-8/arithmetic-datapaths",
+    title="Arithmetic Operations and Datapaths | BoolNexa Academy",
+    description="Learn how multiplexers, operand conditioning and shared arithmetic hardware implement add, subtract, increment, decrement and transfer operations.",
+)
+
+app.add_page(
+    logic_operations_function_selection_lesson,
+    route="/academy/unit-8/logic-function-selection",
+    title="Logic Operations and Function Selection | BoolNexa Academy",
+    description="Learn word-wide AND, OR, XOR and NOT operations, logic function selection and integration of logic and arithmetic ALU results.",
+)
+
+app.add_page(
+    alu_control_operation_encoding_lesson,
+    route="/academy/unit-8/alu-control",
+    title="ALU Control and Operation Encoding | BoolNexa Academy",
+    description="Learn ALU control codes, operation encoding, internal control decoding, reserved codes and control-table verification.",
+)
+
+app.add_page(
+    alu_flags_comparisons_lesson,
+    route="/academy/unit-8/alu-flags-comparisons",
+    title="ALU Flags and Comparisons | BoolNexa Academy",
+    description="Learn equality, signed and unsigned comparison using subtraction and ALU status flags.",
+)
+
+app.add_page(
+    integrated_alu_design_capstone_lesson,
+    route="/academy/unit-8/integrated-alu-design",
+    title="Complete ALU Architecture and Design Challenge | BoolNexa Academy",
+    description="Complete Path 08 by integrating arithmetic, logic, control, comparison and status flags into a verified ALU architecture.",
+)
+
+app.add_page(
+    cpu_architecture_foundations_lesson,
+    route="/academy/unit-9/cpu-architecture-foundations",
+    title="CPU Architecture Foundations | BoolNexa Academy",
+    description="Learn the major CPU blocks, Program Counter, Instruction Register, buses, datapath and control-unit responsibilities.",
+)
+
+app.add_page(
+    fetch_decode_execute_lesson,
+    route="/academy/unit-9/fetch-decode-execute",
+    title="Fetch, Decode and Execute | BoolNexa Academy",
+    description="Trace CPU instructions through fetch, decode, execute and architectural state update.",
+)
+
+app.add_page(
+    registers_buses_register_transfer_lesson,
+    route="/academy/unit-9/register-transfer",
+    title="Registers, Buses and Register Transfer | BoolNexa Academy",
+    description="Learn how CPU registers, shared buses, enables, clocking and register-transfer notation coordinate datapath data movement.",
+)
+
+app.add_page(
+    instruction_formats_data_movement_lesson,
+    route="/academy/unit-9/instruction-formats",
+    title="Instruction Formats and Data Movement | BoolNexa Academy",
+    description="Learn how opcodes, register fields, immediate values, load/store operations and effective addresses control CPU data movement.",
+)
+
+app.add_page(
+    single_cycle_datapath_lesson,
+    route="/academy/unit-9/single-cycle-datapath",
+    title="Single-Cycle Datapath | BoolNexa Academy",
+    description="Trace register-register, load and store instructions through a complete single-cycle CPU datapath and its control selections.",
+)
+
+
+app.add_page(
+    control_signals_branching_lesson,
+    route="/academy/unit-9/control-signals-branching",
+    title="Control Signals and Branching | BoolNexa Academy",
+    description="Learn main CPU control signals, ALU comparison, branch decision logic, target formation and next-PC selection.",
+)
+
+app.add_page(
+    pipeline_fundamentals_lesson,
+    route="/academy/unit-9/pipeline-fundamentals",
+    title="Pipeline Fundamentals | BoolNexa Academy",
+    description="Learn classic five-stage CPU pipelining, pipeline registers, latency, throughput, fill/drain behavior, stage balance and the origin of pipeline hazards.",
+)
+
+app.add_page(
+    pipeline_hazards_lesson,
+    route="/academy/unit-9/pipeline-hazards",
+    title="Pipeline Hazards | BoolNexa Academy",
+    description="Learn structural, data and control pipeline hazards, RAW dependencies, forwarding, load-use stalls, hazard detection, branch prediction and flushing.",
+)
+
+app.add_page(
+    system_interconnect_foundations_lesson,
+    route="/academy/unit-10/system-interconnect-foundations",
+    title="System Interconnect & CPU-Memory/I/O Foundations | BoolNexa Academy",
+    description="Learn system interconnects, address/data/control buses, address decoding, read/write transactions, memory-mapped I/O and handshaking.",
+)
+
+app.add_page(
+    io_organisation_memory_mapped_io_lesson,
+    route="/academy/unit-10/io-organisation-memory-mapped-io",
+    title="I/O Organisation & Memory-Mapped I/O | BoolNexa Academy",
+    description="Learn peripheral data, status and control registers, memory-mapped versus isolated I/O, address decoding and polling.",
+)
+
+app.add_page(
+    interrupts_interrupt_driven_io_lesson,
+    route="/academy/unit-10/interrupts-interrupt-driven-io",
+    title="Interrupts & Interrupt-Driven I/O | BoolNexa Academy",
+    description="Learn interrupt requests, masking, vectors, context preservation, interrupt service routines, priorities and interrupt-driven I/O.",
+)
+
+app.add_page(
+    system_buses_arbitration_protocols_lesson,
+    route="/academy/unit-10/system-buses-arbitration-protocols",
+    title="System Buses, Arbitration & Protocols | BoolNexa Academy",
+    description="Learn shared buses, masters and targets, arbitration, transaction protocols, synchronous timing and asynchronous handshakes.",
+)
+
+app.add_page(
+    dma_high_throughput_data_movement_lesson,
+    route="/academy/unit-10/dma-high-throughput-data-movement",
+    title="DMA & High-Throughput Data Movement | BoolNexa Academy",
+    description="Learn DMA controllers, bus-master transfers, descriptors, bursts, buffering, completion interrupts and cache-coherency considerations.",
+)
+
+app.add_page(
+    timers_counters_system_timing_lesson,
+    route="/academy/unit-10/timers-counters-system-timing",
+    title="Timers, Counters & System Timing | BoolNexa Academy",
+    description="Learn hardware timers, counters, prescalers, compare and capture events, PWM, watchdogs and periodic system timing.",
+)
+
+app.add_page(
+    peripheral_interfaces_serial_communication_lesson,
+    route="/academy/unit-10/peripheral-interfaces-serial-communication",
+    title="Peripheral Interfaces & Serial Communication | BoolNexa Academy",
+    description="Learn peripheral controllers, parallel and serial transfer, UART, SPI, I2C, framing, buffering, interrupts and DMA integration.",
+)
+
+app.add_page(
+    storage_systems_block_io_lesson,
+    route="/academy/unit-10/storage-systems-block-io",
+    title="Storage Systems & Block I/O | BoolNexa Academy",
+    description="Learn persistent storage, block I/O, logical block addressing, command queues, DMA, completion interrupts, caching and flush semantics.",
+)
+
+app.add_page(
+    embedded_systems_foundations_lesson,
+    route="/academy/unit-11/embedded-systems-foundations",
+    title="Embedded Systems Foundations | BoolNexa Academy",
+    description="Learn embedded-system architecture, microcontrollers, firmware, sensors, actuators, interrupts, real-time deadlines and resource constraints.",
+)
+
+app.add_page(
+    gpio_pin_control_hardware_interfacing_lesson,
+    route="/academy/unit-11/gpio-pin-control-hardware-interfacing",
+    title="GPIO, Pin Control & Hardware Interfacing | BoolNexa Academy",
+    description="Learn GPIO direction and data registers, pull resistors, switch debounce, logic levels, driver stages, pin multiplexing and safe hardware interfacing.",
+)
+
+app.add_page(
+    adc_analog_signals_sensor_acquisition_lesson,
+    route="/academy/unit-11/adc-analog-signals-sensor-acquisition",
+    title="ADC, Analog Signals & Sensor Acquisition | BoolNexa Academy",
+    description="Learn analog sensing, ADC resolution and reference voltage, sampling, aliasing, signal conditioning, calibration and sensor acquisition workflows.",
+)
+
+app.add_page(
+    pwm_timers_waveform_generation_lesson,
+    route="/academy/unit-11/pwm-timers-waveform-generation",
+    title="PWM, Timers & Waveform Generation | BoolNexa Academy",
+    description="Learn hardware timers, compare events, PWM frequency and duty cycle, timer resolution, input capture and deterministic waveform generation.",
+)
+
+app.add_page(
+    interrupts_priorities_isr_design_lesson,
+    route="/academy/unit-11/interrupts-priorities-isr-design",
+    title="Interrupts, Priorities & ISR Design | BoolNexa Academy",
+    description="Learn embedded interrupt controllers, priorities, latency, ISR execution, shared-data hazards, critical sections and predictable interrupt handling.",
+)
+
+app.add_page(
+    real_time_scheduling_tasks_determinism_lesson,
+    route="/academy/unit-11/real-time-scheduling-tasks-determinism",
+    title="Real-Time Scheduling, Tasks & Determinism | BoolNexa Academy",
+    description="Learn RTOS task states, deadlines, pre-emption, WCET, schedulability, priority inversion, queues and deterministic embedded scheduling.",
+)
+
+app.add_page(
+    uart_spi_i2c_peripheral_communication_lesson,
+    route="/academy/unit-11/uart-spi-i2c-peripheral-communication",
+    title="UART, SPI, I²C & Peripheral Communication | BoolNexa Academy",
+    description="Learn UART framing, SPI timing and modes, I²C addressing and pull-ups, interface selection, interrupts and DMA for embedded peripheral communication.",
+)
+
+app.add_page(
+    embedded_system_integration_reliability_debugging_lesson,
+    route="/academy/unit-11/embedded-system-integration-reliability-debugging",
+    title="Embedded System Integration, Reliability & Debugging | BoolNexa Academy",
+    description="Learn embedded-system startup, watchdogs, brownout protection, timeouts, fault containment, diagnostics, debugging tools and integration testing.",
+)
+
+app.add_page(
+    hdl_fpga_foundations_lesson,
+    route="/academy/unit-12/hdl-fpga-foundations",
+    title="HDL & FPGA Foundations | BoolNexa Academy",
+    description="Learn hardware description languages, FPGA architecture, LUTs, synthesis, simulation, place-and-route, timing analysis and the FPGA design flow.",
+)
+
+app.add_page(
+    combinational_hdl_design_modules_lesson,
+    route="/academy/unit-12/combinational-hdl-design-modules",
+    title="Combinational HDL Design & Modules | BoolNexa Academy",
+    description="Learn combinational HDL, modules and ports, operators, vectors, muxes, case statements, latch avoidance and hierarchical synthesis.",
+)
+
+app.add_page(
+    sequential_hdl_registers_clocks_lesson,
+    route="/academy/unit-12/sequential-hdl-registers-clocks",
+    title="Sequential HDL, Registers & Clocks | BoolNexa Academy",
+    description="Learn sequential HDL, registers, clock edges, non-blocking assignments, enables, resets, counters, shift registers, clock domains and timing constraints.",
+)
+
+app.add_page(
+    finite_state_machines_control_logic_lesson,
+    route="/academy/unit-12/finite-state-machines-control-logic",
+    title="Finite-State Machines & Control Logic | BoolNexa Academy",
+    description="Learn FSM states and transitions, Moore and Mealy outputs, state encoding, illegal-state recovery and controller/datapath design.",
+)
+
+app.add_page(
+    testbenches_simulation_verification_lesson,
+    route="/academy/unit-12/testbenches-simulation-verification",
+    title="Testbenches, Simulation & Verification | BoolNexa Academy",
+    description="Learn HDL testbenches, DUTs, stimulus, clocks, waveforms, self-checking tests, assertions, coverage and recovery-path verification.",
+)
+
+app.add_page(
+    fpga_synthesis_constraints_timing_lesson,
+    route="/academy/unit-12/fpga-synthesis-constraints-timing",
+    title="FPGA Synthesis, Constraints & Timing | BoolNexa Academy",
+    description="Learn FPGA synthesis mapping, resource reports, timing constraints, static timing analysis, slack, critical paths, pipelining and timing closure.",
+)
+
+app.add_page(
+    fpga_memories_dsp_pipelining_lesson,
+    route="/academy/unit-12/fpga-memories-dsp-pipelining",
+    title="FPGA Memories, DSP Blocks & Pipelining | BoolNexa Academy",
+    description="Learn block RAM, dual-port memory, DSP blocks, pipelined arithmetic, latency versus throughput, valid alignment and FIFO buffering.",
+)
+
+app.add_page(
+    complete_fpga_system_design_deployment_lesson,
+    route="/academy/unit-12/complete-fpga-system-design-deployment",
+    title="Complete FPGA System Design & Deployment | BoolNexa Academy",
+    description="Learn top-level FPGA integration, pin constraints, bitstream generation, hardware bring-up, on-chip logic analysis and complete deployment workflow.",
+)
+
+app.add_page(
+    tools_hub,
+    route="/tools",
+    title="Digital Logic Tools | BoolNexa",
+    description="Discover BoolNexa's autonomous digital logic simulator, Boolean laboratory, circuit generator, number system laboratory, and Academy.",
+)
+
+
+app.add_page(
+    number_system_lab,
+    route="/tools/number-systems",
+    title="Number System Laboratory | BoolNexa",
+    description="Convert exact integer and fractional values among binary, octal, decimal and hexadecimal with interactive step-by-step explanations.",
+)
+
+
+app.add_page(
+    boolean_lab,
+    route="/tools/boolean",
+    title="Boolean Expression & Truth Table Laboratory | BoolNexa",
+    description="Parse Boolean expressions, generate truth tables, detect variables, and derive canonical SOP and POS forms.",
+)
+
+app.add_page(
+    logic_circuit_lab,
+    route="/tools/circuit",
+    title="Logic Circuit Generator | BoolNexa",
+    description="Generate an automatically laid out gate-level logic circuit from a Boolean expression with SVG visualization, orthogonal wiring, gate statistics, and logic depth.",
+)
+

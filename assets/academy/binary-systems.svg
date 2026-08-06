@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200" role="img" aria-labelledby="t d">
+<title id="t">Binary systems</title><desc id="d">Four binary switches feeding a register.</desc>
+<rect width="360" height="200" rx="24" fill="#eff6ff"/>
+<g font-family="Arial,sans-serif" text-anchor="middle">
+<text x="180" y="35" font-size="16" fill="#1e3a8a" font-weight="700">BINARY SYSTEMS</text>
+<g fill="#fff" stroke="#2563eb" stroke-width="3">
+<rect x="35" y="65" width="52" height="60" rx="12"/><rect x="105" y="65" width="52" height="60" rx="12"/><rect x="175" y="65" width="52" height="60" rx="12"/><rect x="245" y="65" width="52" height="60" rx="12"/>
+</g>
+<g font-size="30" font-weight="700" fill="#2563eb"><text x="61" y="104">1</text><text x="131" y="104">0</text><text x="201" y="104">1</text><text x="271" y="104">0</text></g>
+<path d="M61 125v23h210v-23" fill="none" stroke="#64748b" stroke-width="3"/>
+<rect x="110" y="148" width="140" height="34" rx="8" fill="#1d4ed8"/><text x="180" y="171" fill="white" font-size="15">4-BIT REGISTER</text>
+</g></svg>

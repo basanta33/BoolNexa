@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200" role="img" aria-labelledby="t d">
+<title id="t">Boolean algebra and logic gates</title><desc id="d">AND, OR and NOT logic symbols.</desc>
+<rect width="360" height="200" rx="24" fill="#f0fdf4"/>
+<g fill="none" stroke="#15803d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+<path d="M35 58h30M35 88h30M65 42h28c35 0 35 62 0 62H65zM128 73h27"/>
+<path d="M175 42q24 31 0 62q43 0 71-31q-28-31-71-31zM145 58h35M145 88h35M246 73h25"/>
+<path d="M286 48v50l45-25zM331 73h18"/><circle cx="337" cy="73" r="6" fill="#f0fdf4"/>
+</g>
+<g font-family="Arial,sans-serif" font-size="13" fill="#166534" font-weight="700" text-anchor="middle"><text x="96" y="128">AND</text><text x="211" y="128">OR</text><text x="314" y="128">NOT</text><text x="180" y="168" font-size="16">BOOLEAN LOGIC</text></g>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200" role="img" aria-labelledby="t d">
+<title id="t">Karnaugh map</title><desc id="d">Four by four Karnaugh map with grouped cells.</desc>
+<rect width="360" height="200" rx="24" fill="#fff7ed"/>
+<g transform="translate(90 25)" stroke="#9a3412" stroke-width="2"><rect width="180" height="140" fill="white"/>
+<path d="M45 0v140M90 0v140M135 0v140M0 35h180M0 70h180M0 105h180"/>
+<rect x="3" y="3" width="84" height="64" rx="14" fill="#fed7aa" stroke="#ea580c" stroke-width="4"/>
+<rect x="93" y="73" width="84" height="64" rx="14" fill="#ffedd5" stroke="#f97316" stroke-width="4"/>
+</g><text x="180" y="190" text-anchor="middle" font-family="Arial" font-size="16" font-weight="700" fill="#9a3412">GROUP • SIMPLIFY • BUILD</text></svg>

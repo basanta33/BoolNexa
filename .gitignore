@@ -1,3 +1,5 @@
+.web
+.states
 *.py[cod]
 *.pyo
 .venv/
@@ -16,3 +18,4 @@ dist/
 node_modules/
 .DS_Store
 Thumbs.db
+.venv_broken/

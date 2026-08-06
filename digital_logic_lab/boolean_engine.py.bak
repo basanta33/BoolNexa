@@ -1,0 +1,209 @@
+"""BoolNexa Boolean expression engine."""
+from __future__ import annotations
+from dataclasses import dataclass
+from itertools import product
+import re
+from typing import Mapping, Sequence
+
+class BooleanExpressionError(ValueError):
+    pass
+
+@dataclass(frozen=True)
+class Node:
+    op: str
+    value: str = ""
+    left: "Node | None" = None
+    right: "Node | None" = None
+
+    def evaluate(self, values: Mapping[str, bool]) -> bool:
+        if self.op == "VAR":
+            if self.value not in values:
+                raise BooleanExpressionError(f"Missing value for {self.value}.")
+            return bool(values[self.value])
+        if self.op == "CONST":
+            return self.value == "1"
+        if self.op == "NOT":
+            return not self.left.evaluate(values)
+        a, b = self.left.evaluate(values), self.right.evaluate(values)
+        if self.op == "AND": return a and b
+        if self.op == "OR": return a or b
+        if self.op == "XOR": return a != b
+        raise BooleanExpressionError(f"Unsupported operation {self.op}.")
+
+    def variables(self) -> set[str]:
+        if self.op == "VAR": return {self.value}
+        if self.op == "CONST": return set()
+        if self.op == "NOT": return self.left.variables()
+        return self.left.variables() | self.right.variables()
+
+    def display(self) -> str:
+        if self.op in {"VAR", "CONST"}: return self.value
+        if self.op == "NOT":
+            child = self.left.display()
+            if self.left.op in {"AND", "OR", "XOR"}: child = f"({child})"
+            return f"{child}'"
+        symbol = {"AND": "·", "OR": " + ", "XOR": " ⊕ "}[self.op]
+        left, right = self.left.display(), self.right.display()
+        if self.op == "AND":
+            if self.left.op in {"OR", "XOR"}: left = f"({left})"
+            if self.right.op in {"OR", "XOR"}: right = f"({right})"
+        return f"{left}{symbol}{right}"
+
+@dataclass(frozen=True)
+class Token:
+    kind: str
+    value: str
+
+TOKEN_RE = re.compile(r"\s*(?:(?P<ID>[A-Za-z][A-Za-z0-9_]*)|(?P<CONST>[01])|(?P<OP>[+.*&|^⊕'!~()]))")
+
+def _raw_tokens(expression: str) -> list[Token]:
+    if not expression or not expression.strip():
+        raise BooleanExpressionError("Enter a Boolean expression.")
+    text, tokens, pos = expression.strip(), [], 0
+    while pos < len(text):
+        match = TOKEN_RE.match(text, pos)
+        if not match:
+            raise BooleanExpressionError(f"Unexpected character near position {pos + 1}: {text[pos]!r}")
+        pos = match.end()
+        if match.lastgroup == "ID":
+            word = match.group("ID")
+            upper = word.upper()
+            if upper in {"AND", "OR", "XOR", "NOT"}:
+                tokens.append(Token("OP", upper))
+            elif word.isupper() and len(word) > 1 and word.isalpha():
+                tokens.extend(Token("ID", ch) for ch in word)
+            else:
+                tokens.append(Token("ID", word))
+        elif match.lastgroup == "CONST":
+            tokens.append(Token("CONST", match.group("CONST")))
+        else:
+            tokens.append(Token("OP", match.group("OP")))
+    return tokens
+
+def _can_end(t: Token) -> bool:
+    return t.kind in {"ID", "CONST"} or t.value in {")", "'"}
+
+def _can_start(t: Token) -> bool:
+    return t.kind in {"ID", "CONST"} or t.value in {"(", "!", "~", "NOT"}
+
+def tokenize(expression: str) -> list[Token]:
+    raw, result = _raw_tokens(expression), []
+    for token in raw:
+        if result and _can_end(result[-1]) and _can_start(token):
+            result.append(Token("OP", "AND"))
+        result.append(token)
+    return result
+
+class _Parser:
+    def __init__(self, tokens: Sequence[Token]): self.tokens, self.index = list(tokens), 0
+    def current(self): return self.tokens[self.index] if self.index < len(self.tokens) else None
+    def accept(self, *values):
+        token = self.current()
+        if token is not None and token.value in values:
+            self.index += 1
+            return token
+        return None
+    def parse(self):
+        node = self.parse_or()
+        if self.current() is not None: raise BooleanExpressionError(f"Unexpected token {self.current().value!r}.")
+        return node
+    def parse_or(self):
+        node = self.parse_xor()
+        while self.accept("+", "|", "OR"): node = Node("OR", left=node, right=self.parse_xor())
+        return node
+    def parse_xor(self):
+        node = self.parse_and()
+        while self.accept("^", "⊕", "XOR"): node = Node("XOR", left=node, right=self.parse_and())
+        return node
+    def parse_and(self):
+        node = self.parse_unary()
+        while self.accept(".", "*", "&", "AND"): node = Node("AND", left=node, right=self.parse_unary())
+        return node
+    def parse_unary(self):
+        count = 0
+        while self.accept("!", "~", "NOT"): count += 1
+        node = self.parse_primary()
+        while self.accept("'"): node = Node("NOT", left=node)
+        for _ in range(count): node = Node("NOT", left=node)
+        return node
+    def parse_primary(self):
+        token = self.current()
+        if token is None: raise BooleanExpressionError("Expression ended unexpectedly.")
+        if token.kind == "ID": self.index += 1; return Node("VAR", value=token.value)
+        if token.kind == "CONST": self.index += 1; return Node("CONST", value=token.value)
+        if self.accept("("):
+            node = self.parse_or()
+            if not self.accept(")"): raise BooleanExpressionError("Missing closing parenthesis.")
+            return node
+        raise BooleanExpressionError(f"Expected a variable, constant or '(', got {token.value!r}.")
+
+def parse_expression(expression: str) -> Node:
+    return _Parser(tokenize(expression)).parse()
+
+def evaluate_expression(expression: str, values: Mapping[str, bool]) -> bool:
+    return parse_expression(expression).evaluate(values)
+
+def variables_for(node: Node) -> list[str]:
+    return sorted(node.variables(), key=lambda n: (n.upper(), n))
+
+def _subexpressions(node: Node) -> list[Node]:
+    result, seen = [], set()
+    def visit(current):
+        if current.left is not None: visit(current.left)
+        if current.right is not None: visit(current.right)
+        if current.op not in {"VAR", "CONST"} and current.display() not in seen:
+            seen.add(current.display()); result.append(current)
+    visit(node)
+    return result
+
+@dataclass(frozen=True)
+class TruthTable:
+    expression: str
+    normalized_expression: str
+    variables: list[str]
+    intermediate_headers: list[str]
+    rows: list[dict[str, str]]
+    minterms: list[int]
+    maxterms: list[int]
+    canonical_sop: str
+    canonical_pos: str
+
+def _sop(vars, mins):
+    if not mins: return "0"
+    if len(mins) == 2 ** len(vars): return "1"
+    out=[]
+    for i in mins:
+        bits=f"{i:0{len(vars)}b}"
+        out.append("".join(v if b=="1" else f"{v}'" for v,b in zip(vars,bits)))
+    return " + ".join(out)
+
+def _pos(vars, maxs):
+    if not maxs: return "1"
+    if len(maxs) == 2 ** len(vars): return "0"
+    out=[]
+    for i in maxs:
+        bits=f"{i:0{len(vars)}b}"
+        out.append("(" + " + ".join(f"{v}'" if b=="1" else v for v,b in zip(vars,bits)) + ")")
+    return "".join(out)
+
+def generate_truth_table(expression: str, *, include_intermediate: bool = True, max_variables: int = 8) -> TruthTable:
+    node = parse_expression(expression)
+    variables = variables_for(node)
+    if len(variables) > max_variables:
+        raise BooleanExpressionError(f"Limit expressions to {max_variables} variables in the interactive lab.")
+    final = node.display()
+    inter = [n for n in (_subexpressions(node) if include_intermediate else []) if n.display() != final]
+    headers=[n.display() for n in inter]
+    rows=[]; mins=[]; maxs=[]
+    for index,bits in enumerate(product((False,True), repeat=len(variables))):
+        values=dict(zip(variables,bits)); result=node.evaluate(values)
+        row={v:("1" if values[v] else "0") for v in variables}
+        for n in inter: row[n.display()] = "1" if n.evaluate(values) else "0"
+        row["F"] = "1" if result else "0"
+        rows.append(row); (mins if result else maxs).append(index)
+    return TruthTable(expression, final, variables, headers, rows, mins, maxs, _sop(variables,mins), _pos(variables,maxs))
+
+def classify_expression(table: TruthTable) -> str:
+    if not table.minterms: return "Contradiction (always 0)"
+    if not table.maxterms: return "Tautology (always 1)"
+    return "Contingent expression"
