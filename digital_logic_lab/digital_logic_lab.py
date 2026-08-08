@@ -2991,6 +2991,9 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
       is_seven_seg,
       "50px",
       rx.cond(
+          g_type == "CLK",
+          "45px",
+          rx.cond(
           (g_type == "RS_FF") | (g_type == "JK_FF"),
           "18px",
           rx.cond(
@@ -3010,6 +3013,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   ),
               ),
           ),
+          ),
       ),
   )
 
@@ -3017,6 +3021,9 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
       is_seven_seg,
       "50",
       rx.cond(
+          g_type == "CLK",
+          "45",
+          rx.cond(
           (g_type == "RS_FF") | (g_type == "JK_FF"),
           "18",
           rx.cond(
@@ -3035,6 +3042,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                       ),
                   ),
               ),
+          ),
           ),
       ),
   )
