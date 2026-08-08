@@ -1646,7 +1646,11 @@ def vec_output(
 def vec_clock(
     is_on: rx.Var, clock_mode: rx.Var, clock_interval, cell_key: str
 ) -> rx.Component:
-  interval_str = str(clock_interval)
+  interval_value = (
+      clock_interval.to_string()
+      if isinstance(clock_interval, rx.Var)
+      else str(clock_interval)
+  )
   return rx.box(
       rx.vstack(
           rx.hstack(
@@ -1685,7 +1689,7 @@ def vec_clock(
                   },
               ),
               rx.el.input(
-                  value=interval_str,
+                  value=interval_value,
                   on_change=lambda val, k=cell_key: State.set_clock_interval(
                       k, val
                   ),
