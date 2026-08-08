@@ -151,6 +151,7 @@ class State(rx.State):
   pan_x: float = 0.0
   pan_y: float = 0.0
   zoom: float = 1.0
+  zoom_percent: str = "100%"
   generated_simulation_active: bool = False
   generated_simulation_expression: str = ""
   generated_simulation_mode: str = ""
@@ -553,6 +554,7 @@ class State(rx.State):
     self.pan_x = 0.0
     self.pan_y = 0.0
     self.zoom = 1.0
+    self.zoom_percent = "100%"
     self.generated_simulation_active = True
     self.generated_simulation_expression = expression
     self.generated_simulation_mode = mode
@@ -1132,7 +1134,9 @@ class State(rx.State):
       return
     self.pan_x = float(data.get("panX", self.pan_x))
     self.pan_y = float(data.get("panY", self.pan_y))
-    self.zoom = max(0.25, min(2.0, float(data.get("zoom", self.zoom))))
+    next_zoom = max(0.25, min(2.0, float(data.get("zoom", self.zoom))))
+    self.zoom = next_zoom
+    self.zoom_percent = f"{round(next_zoom * 100)}%"
 
   def handle_gate_drag_end(self, data: dict):
     data = _decode_callback_payload(data)
@@ -3679,14 +3683,25 @@ def index() -> rx.Component:
         ),
         position="relative",
         style={
-            "width": "47%", "min_height": "66px", "padding": "5px 0px 7px 0px",
-            "cursor": "grab", "overflow": "hidden", "border-radius": "8px",
-            "background": rx.cond(is_selected, "#dbeafe", "#ffffff"),
-            "border": rx.cond(is_selected, "2px solid #2563eb", "1px solid #cbd5e1"),
+            "width": "47%", "min_height": "72px", "padding": "7px 2px 8px 2px",
+            "cursor": "grab", "overflow": "hidden", "border-radius": "10px",
+            "background": rx.cond(is_selected, "#eff6ff", "#ffffff"),
+            "border": rx.cond(is_selected, "2px solid #2563eb", "1px solid #dbe3ee"),
+            "box-shadow": rx.cond(
+                is_selected,
+                "0 4px 12px rgba(37,99,235,0.14)",
+                "0 1px 4px rgba(15,23,42,0.05)",
+            ),
+            "transition": "transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease",
         },
         on_click=State.set_selected_type(component_name),
         on_double_click=State.add_gate_at_default_location(component_name),
-        _hover={"border-color": "#3b82f6", "background": "#f1f5f9"},
+        _hover={
+            "border-color": "#60a5fa",
+            "background": "#f8fbff",
+            "transform": "translateY(-1px)",
+            "box-shadow": "0 5px 14px rgba(15,23,42,0.08)",
+        },
         custom_attrs={
             "draggable": "true", "data-gate-type": component_name,
             "ondragstart": (
@@ -3760,18 +3775,30 @@ def index() -> rx.Component:
         position="relative",
         style={
             "width": "47%",
-            "padding": "6px 0px 8px 0px",
+            "min-height": "72px",
+            "padding": "7px 2px 8px 2px",
             "cursor": "grab",
             "overflow": "hidden",
-            "border-radius": "8px",
-            "background": rx.cond(is_selected, "#dbeafe", "#ffffff"),
+            "border-radius": "10px",
+            "background": rx.cond(is_selected, "#eff6ff", "#ffffff"),
             "border": rx.cond(
-                is_selected, "2px solid #2563eb", "1px solid #cbd5e1"
+                is_selected, "2px solid #2563eb", "1px solid #dbe3ee"
             ),
+            "box-shadow": rx.cond(
+                is_selected,
+                "0 4px 12px rgba(37,99,235,0.14)",
+                "0 1px 4px rgba(15,23,42,0.05)",
+            ),
+            "transition": "transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease",
         },
         on_click=State.set_selected_type(gate_name),
         on_double_click=State.add_gate_at_default_location(gate_name),
-        _hover={"border-color": "#3b82f6", "background": "#f1f5f9"},
+        _hover={
+            "border-color": "#60a5fa",
+            "background": "#f8fbff",
+            "transform": "translateY(-1px)",
+            "box-shadow": "0 5px 14px rgba(15,23,42,0.08)",
+        },
         custom_attrs={
             "draggable": "true",
             "data-gate-type": gate_name,
@@ -4023,116 +4050,120 @@ def index() -> rx.Component:
       ),
       rx.box(
           rx.vstack(
-              rx.hstack(
-                  rx.vstack(
-                      rx.text(
-                          "BoolNexa",
-                          font_weight="black",
-                          font_size="16px",
-                          color="#0f172a",
-                      ),
-                      rx.text(
-                          "Interactive Digital Logic Simulator",
-                          font_size="9px",
-                          color="#64748b",
-                          margin_top="-6px",
-                      ),
-                      spacing="0",
-                  ),
-                  rx.box(flex="1"),
-                  rx.link(
-                      rx.button(
-                          "Academy",
-                          size="1",
-                          variant="soft",
-                          color_scheme="blue",
-                          title="Open BoolNexa Academy",
-                      ),
-                      href="/academy",
-                      text_decoration="none",
-                  ),
-                  rx.link(
-                      rx.button(
-                          "Tools",
-                          size="1",
-                          variant="soft",
-                          color_scheme="gray",
-                          title="Open BoolNexa tools",
-                      ),
-                      href="/tools",
-                      text_decoration="none",
-                  ),
-                  rx.link(
-                      rx.button(
-                          "Boolean Lab",
-                          size="1",
-                          variant="soft",
-                          color_scheme="indigo",
-                          title="Open Boolean Laboratory",
-                      ),
-                      href="/tools/boolean",
-                      text_decoration="none",
-                  ),
-                  rx.link(
-                      rx.button(
-                          "Circuit Generator",
-                          size="1",
-                          variant="soft",
-                          color_scheme="violet",
-                          title="Open Logic Circuit Generator",
-                      ),
-                      href="/tools/circuit",
-                      text_decoration="none",
-                  ),
-                  rx.link(
-                      rx.button(
-                          "Number Systems",
-                          size="1",
-                          variant="soft",
-                          color_scheme="cyan",
-                          title="Open Number System Laboratory",
-                      ),
-                      href="/tools/number-systems",
-                      text_decoration="none",
-                  ),
-                  align_items="center",
-                  width="100%",
-              ),
-              rx.divider(color="#e2e8f0"),
-              # Local project controls: no account or email required.
-              rx.vstack(
+              rx.box(
                   rx.hstack(
-                      rx.text("Project", font_size="11px", font_weight="900", color="#1e293b"),
-                      rx.spacer(),
-                      rx.badge(State.project_status, size="1", variant="soft", color_scheme="gray"),
-                      width="100%", align="center",
-                  ),
-                  rx.hstack(
-                      rx.button(
-                          "New", size="1", color_scheme="gray", variant="soft", cursor="pointer", width="31%",
-                          title="Start a new blank project",
-                          on_click=rx.call_script(
-                              "if (confirm('Start a new project? Unsaved circuit changes will be cleared.')) { const b=document.getElementById('new-project-trigger-btn'); if (b) b.dispatchEvent(new MouseEvent('click',{bubbles:true})); }"
+                      rx.center(
+                          rx.text("B", font_size="16px", font_weight="900", color="#ffffff"),
+                          width="34px",
+                          height="34px",
+                          border_radius="10px",
+                          background="linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
+                          box_shadow="0 5px 14px rgba(37,99,235,0.24)",
+                      ),
+                      rx.vstack(
+                          rx.hstack(
+                              rx.text("BoolNexa", font_weight="900", font_size="18px", color="#0f172a"),
+                              rx.badge("SIMULATOR", size="1", variant="soft", color_scheme="blue"),
+                              spacing="2",
+                              align="center",
                           ),
+                          rx.text(
+                              "Interactive Digital Logic Workbench",
+                              font_size="9px",
+                              color="#64748b",
+                          ),
+                          spacing="0",
+                          align_items="start",
                       ),
-                      rx.button(
-                          "Save", size="1", color_scheme="blue", variant="soft", cursor="pointer", width="31%",
-                          title="Download circuit project as JSON", on_click=State.save_project_download,
-                      ),
-                      rx.button(
-                          "Load", size="1", color_scheme="blue", variant="soft", cursor="pointer", width="31%",
-                          title="Load a BoolNexa project JSON file",
-                          on_click=rx.call_script("document.getElementById('project-file-input').click();"),
-                      ),
-                      width="100%", justify="between",
+                      width="100%",
+                      align="center",
+                      spacing="3",
                   ),
-                  rx.text("JSON project files preserve components, positions, wires and notes.", font_size="8px", color="#64748b"),
-                  width="100%", spacing="1",
+                  width="100%",
+                  padding="10px",
+                  border="1px solid #dbeafe",
+                  border_radius="12px",
+                  background="linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)",
+                  box_shadow="0 3px 12px rgba(15,23,42,0.05)",
               ),
-              rx.divider(color="#e2e8f0"),
-              rx.vstack(
+              rx.flex(
+                  rx.link(
+                      rx.button("Academy", size="1", variant="soft", color_scheme="blue", width="100%"),
+                      href="/academy", text_decoration="none", width="48%",
+                  ),
+                  rx.link(
+                      rx.button("Tools", size="1", variant="soft", color_scheme="gray", width="100%"),
+                      href="/tools", text_decoration="none", width="48%",
+                  ),
+                  rx.link(
+                      rx.button("Boolean Lab", size="1", variant="soft", color_scheme="indigo", width="100%"),
+                      href="/tools/boolean", text_decoration="none", width="48%",
+                  ),
+                  rx.link(
+                      rx.button("Circuit Generator", size="1", variant="soft", color_scheme="violet", width="100%"),
+                      href="/tools/circuit", text_decoration="none", width="48%",
+                  ),
+                  rx.link(
+                      rx.button("Number Systems", size="1", variant="soft", color_scheme="cyan", width="100%"),
+                      href="/tools/number-systems", text_decoration="none", width="100%",
+                  ),
+                  width="100%",
+                  flex_wrap="wrap",
+                  justify="between",
+                  style={"gap": "6px"},
+              ),
+              # Local project controls: no account or email required.
+              rx.box(
+                  rx.vstack(
+                      rx.hstack(
+                          rx.text("Project", font_size="12px", font_weight="900", color="#0f172a"),
+                          rx.spacer(),
+                          rx.badge("LOCAL JSON", size="1", variant="soft", color_scheme="gray"),
+                          width="100%", align="center",
+                      ),
+                      rx.text(
+                          State.project_status,
+                          font_size="9px",
+                          font_weight="700",
+                          color="#2563eb",
+                          width="100%",
+                      ),
+                      rx.hstack(
+                          rx.button(
+                              "New", size="1", color_scheme="gray", variant="soft", cursor="pointer", width="31%",
+                              title="Start a new blank project",
+                              on_click=rx.call_script(
+                                  "if (confirm('Start a new project? Unsaved circuit changes will be cleared.')) { const b=document.getElementById('new-project-trigger-btn'); if (b) b.dispatchEvent(new MouseEvent('click',{bubbles:true})); }"
+                              ),
+                          ),
+                          rx.button(
+                              "Save", size="1", color_scheme="blue", variant="solid", cursor="pointer", width="31%",
+                              title="Download circuit project as JSON", on_click=State.save_project_download,
+                          ),
+                          rx.button(
+                              "Load", size="1", color_scheme="blue", variant="soft", cursor="pointer", width="31%",
+                              title="Load a BoolNexa project JSON file",
+                              on_click=rx.call_script("document.getElementById('project-file-input').click();"),
+                          ),
+                          width="100%", justify="between",
+                      ),
+                      rx.text(
+                          "Portable JSON preserves components, positions, wires and notes.",
+                          font_size="8px", color="#64748b",
+                      ),
+                      width="100%", spacing="1",
+                  ),
+                  width="100%",
+                  padding="10px",
+                  border="1px solid #dbeafe",
+                  border_radius="12px",
+                  background="#ffffff",
+                  box_shadow="0 2px 9px rgba(15,23,42,0.05)",
+              ),
+              rx.box(
+                  rx.vstack(
                   rx.hstack(
-                      rx.text("Canvas Tools", font_size="11px", font_weight="900", color="#1e293b"),
+                      rx.text("Canvas Tools", font_size="12px", font_weight="900", color="#0f172a"),
                       rx.spacer(),
                       rx.text("Quick actions", font_size="8px", color="#64748b"),
                       width="100%",
@@ -4186,8 +4217,14 @@ def index() -> rx.Component:
                   ),
                   width="100%",
                   spacing="1",
+                  ),
+                  width="100%",
+                  padding="10px",
+                  border="1px solid #e2e8f0",
+                  border_radius="12px",
+                  background="#ffffff",
+                  box_shadow="0 2px 9px rgba(15,23,42,0.04)",
               ),
-              rx.divider(color="#e2e8f0"),
               rx.box(
                   rx.vstack(
                       rx.hstack(
@@ -4285,32 +4322,46 @@ def index() -> rx.Component:
                       width="100%", spacing="2",
                   ),
                   width="100%", padding="10px",
-                  border="1px solid #dbe3ee", border_radius="12px", background="#f8fafc",
-                  box_shadow="0 2px 8px rgba(15,23,42,0.05)",
+                  border="1px solid #dbeafe", border_radius="12px",
+                  background="linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+                  box_shadow="0 4px 14px rgba(15,23,42,0.06)",
                   max_height="460px",
                   style={"overflow-y": "auto", "overflow-x": "hidden"},
               ),
-              rx.divider(color="#e2e8f0"),
               rx.box(flex="1"),
-              rx.vstack(
-                  rx.text("BoolNexa v1.0", font_size="10px", font_weight="900", color="#0f172a"),
-                  rx.text("Interactive Digital Logic Simulator", font_size="8px", color="#64748b"),
-                  rx.text("Developed by Basanta Paudyal | v1.0.0", font_size="8px", color="#64748b"),
-                  rx.text("boolnexa.sim@gmail.com", font_size="8px", color="#2563eb"),
-                  width="100%", spacing="0", padding_top="6px",
+              rx.box(
+                  rx.vstack(
+                      rx.hstack(
+                          rx.text("BoolNexa", font_size="10px", font_weight="900", color="#0f172a"),
+                          rx.spacer(),
+                          rx.badge("v1.0", size="1", variant="soft", color_scheme="blue"),
+                          width="100%", align="center",
+                      ),
+                      rx.text(
+                          "Developed by B. Paudyal | v1.0.0",
+                          font_size="8px",
+                          color="#64748b",
+                      ),
+                      rx.text("boolnexa.sim@gmail.com", font_size="8px", color="#2563eb"),
+                      width="100%", spacing="0",
+                  ),
+                  width="100%",
+                  padding="8px 10px",
+                  border_top="1px solid #e2e8f0",
+                  background="rgba(255,255,255,0.72)",
               ),
               width="100%",
               height="100%",
-              spacing="3",
+              spacing="2",
           ),
           width="300px",
           min_width="300px",
           max_width="300px",
           height="100vh",
-          padding="18px",
-          bg="#ffffff",
+          padding="14px",
+          bg="#f8fafc",
           border_right="1px solid #dbe3ee",
-          box_shadow="4px 0 18px rgba(15,23,42,0.04)",
+          box_shadow="5px 0 22px rgba(15,23,42,0.06)",
           style={"overflow-y": "auto", "overflow-x": "hidden"},
       ),
       rx.box(
@@ -4865,13 +4916,61 @@ def index() -> rx.Component:
               },
           ),
           rx.hstack(
-              rx.button("-", size="1", variant="soft", on_click=rx.call_script("JSON.stringify(window.__logicZoom ? window.__logicZoom(-0.1) : null)", callback=State.handle_view_change), title="Zoom Out"),
-              rx.button("100%", size="1", variant="ghost", on_click=rx.call_script("JSON.stringify(window.__logicResetZoom ? window.__logicResetZoom() : null)", callback=State.handle_view_change), title="Reset to 100%"),
-              rx.button("+", size="1", variant="soft", on_click=rx.call_script("JSON.stringify(window.__logicZoom ? window.__logicZoom(0.1) : null)", callback=State.handle_view_change), title="Zoom In"),
-              rx.button("Fit", size="1", variant="soft", on_click=rx.call_script("JSON.stringify(window.__logicFit ? window.__logicFit() : null)", callback=State.handle_view_change), title="Fit Circuit"),
-              position="absolute", top="14px", right="18px", z_index="50",
-              padding="6px", border="1px solid #cbd5e1", border_radius="8px",
-              bg="rgba(255,255,255,0.94)", box_shadow="0 2px 8px rgba(15,23,42,0.12)", spacing="1",
+              rx.button(
+                  "−",
+                  size="1",
+                  variant="soft",
+                  on_click=rx.call_script(
+                      "JSON.stringify(window.__logicZoom ? window.__logicZoom(-0.1) : null)",
+                      callback=State.handle_view_change,
+                  ),
+                  title="Zoom Out",
+                  min_width="28px",
+              ),
+              rx.button(
+                  State.zoom_percent,
+                  size="1",
+                  variant="ghost",
+                  on_click=rx.call_script(
+                      "JSON.stringify(window.__logicResetZoom ? window.__logicResetZoom() : null)",
+                      callback=State.handle_view_change,
+                  ),
+                  title="Reset to 100%",
+                  min_width="52px",
+                  font_weight="700",
+              ),
+              rx.button(
+                  "+",
+                  size="1",
+                  variant="soft",
+                  on_click=rx.call_script(
+                      "JSON.stringify(window.__logicZoom ? window.__logicZoom(0.1) : null)",
+                      callback=State.handle_view_change,
+                  ),
+                  title="Zoom In",
+                  min_width="28px",
+              ),
+              rx.button(
+                  "Fit",
+                  size="1",
+                  variant="soft",
+                  color_scheme="blue",
+                  on_click=rx.call_script(
+                      "JSON.stringify(window.__logicFit ? window.__logicFit() : null)",
+                      callback=State.handle_view_change,
+                  ),
+                  title="Fit Circuit",
+              ),
+              position="absolute",
+              top="14px",
+              right="18px",
+              z_index="50",
+              padding="6px",
+              border="1px solid #cbd5e1",
+              border_radius="9px",
+              bg="rgba(255,255,255,0.96)",
+              box_shadow="0 3px 10px rgba(15,23,42,0.12)",
+              spacing="1",
           ),
           on_context_menu=State.cancel_active_actions,
           on_click=rx.call_script(
