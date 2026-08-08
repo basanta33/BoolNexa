@@ -163,6 +163,50 @@
         });
     }
 
+
+    // Resolve a terminal anchor from the actual rendered pin bubble.
+    // This keeps MSI/LSI live wire movement identical to ordinary logic gates
+    // and avoids duplicating component-width / pin-offset geometry in JS.
+    function getPinLocalAnchor(gateEl, selector, fallbackX, fallbackY) {
+        if (!gateEl) return { x: fallbackX, y: fallbackY };
+        const pin = gateEl.querySelector(selector);
+        if (!pin) return { x: fallbackX, y: fallbackY };
+        return {
+            x: pin.offsetLeft + (pin.offsetWidth / 2),
+            y: pin.offsetTop + (pin.offsetHeight / 2)
+        };
+    }
+
+    function getOutputLocalAnchor(srcEl, srcKey) {
+        if (!srcEl) return { x: GATE_WIDTH, y: 30 };
+        const gateType = srcEl.getAttribute('data-gate-type') || '';
+        const portName = srcKey && srcKey.includes(':') ? srcKey.split(':').slice(1).join(':') : '';
+        let selector = '.output-pin-bubble';
+        if (portName && portName !== 'q_bar') {
+            selector = `.output-pin-bubble[data-output-port="${portName}"]`;
+        } else if (portName === 'q_bar') {
+            const pins = srcEl.querySelectorAll('.output-pin-bubble');
+            if (pins.length > 1) {
+                const pin = pins[pins.length - 1];
+                return { x: pin.offsetLeft + pin.offsetWidth / 2, y: pin.offsetTop + pin.offsetHeight / 2 };
+            }
+        }
+        return getPinLocalAnchor(
+            srcEl, selector,
+            getComponentWidthByType(gateType),
+            getOutputPinOffsetFromElement(srcEl, srcKey)
+        );
+    }
+
+    function getInputLocalAnchor(targetEl, slot, fallbackX, fallbackY) {
+        if (!targetEl) return { x: fallbackX, y: fallbackY };
+        return getPinLocalAnchor(
+            targetEl,
+            `.input-pin-bubble[data-pin-slot="${slot}"]`,
+            fallbackX, fallbackY
+        );
+    }
+
     function updateAttachedWiresLive(gateId, newX, newY) {
         document.querySelectorAll('#logic-svg-layer g').forEach(g => {
             const pathHitbox = g.querySelector('path[data-src-key], path[data-target-key]');
@@ -180,27 +224,30 @@
             if (baseSrcKey === gateId) {
                 const srcEl = document.querySelector(`[data-gate-id="${baseSrcKey}"]`);
                 if (!srcEl) return;
-                const gateType = srcEl.getAttribute('data-gate-type') || '';
-                const srcPinY = getOutputPinOffsetFromElement(srcEl, srcKey);
-                srcX = newX + getComponentWidthByType(gateType);
-                srcY = newY + srcPinY;
+                const srcAnchor = getOutputLocalAnchor(srcEl, srcKey);
+                srcX = newX + srcAnchor.x;
+                srcY = newY + srcAnchor.y;
 
                 const targetEl = document.querySelector(`[data-gate-id="${targetKey}"]`);
                 if (!targetEl) return;
                 const pos = getGateCoordinates(targetEl);
-                dstX = pos.x + offsetX;
-                dstY = pos.y + offsetY;
+                const slot = pathHitbox.getAttribute('data-slot') || '';
+                const dstAnchor = getInputLocalAnchor(targetEl, slot, offsetX, offsetY);
+                dstX = pos.x + dstAnchor.x;
+                dstY = pos.y + dstAnchor.y;
             } else if (targetKey === gateId) {
-                dstX = newX + offsetX;
-                dstY = newY + offsetY;
+                const targetEl = document.querySelector(`[data-gate-id="${targetKey}"]`);
+                const slot = pathHitbox.getAttribute('data-slot') || '';
+                const dstAnchor = getInputLocalAnchor(targetEl, slot, offsetX, offsetY);
+                dstX = newX + dstAnchor.x;
+                dstY = newY + dstAnchor.y;
 
                 const srcEl = document.querySelector(`[data-gate-id="${baseSrcKey}"]`);
                 if (!srcEl) return;
-                const gateType = srcEl.getAttribute('data-gate-type') || '';
-                const srcPinY = getOutputPinOffsetFromElement(srcEl, srcKey);
+                const srcAnchor = getOutputLocalAnchor(srcEl, srcKey);
                 const pos = getGateCoordinates(srcEl);
-                srcX = pos.x + getComponentWidthByType(gateType);
-                srcY = pos.y + srcPinY;
+                srcX = pos.x + srcAnchor.x;
+                srcY = pos.y + srcAnchor.y;
             } else {
                 return;
             }
@@ -365,7 +412,13 @@
 
         let gateCard = e.target.closest('[data-gate-id]');
         if (isDeleteMode && gateCard) {
-            window.__pendingDeleteGate = { key: gateCard.getAttribute('data-gate-id') }; dispatchProxyClick("delete-gate-trigger-btn"); return;
+            // Single component-delete path:
+            // let the existing Reflex gate-card on_click handler call
+            // State.handle_gate_click(cell_key). Do not dispatch a second
+            // JavaScript delete event here.
+            window.__draggedGate = null;
+            window.__selectedGateKey = gateCard.getAttribute('data-gate-id');
+            return;
         }
         if (e.target.closest('.input-label-field') || e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && !e.target.readOnly)) return;
         
@@ -429,14 +482,12 @@
                 const zoom = parseFloat(ws.getAttribute("data-zoom")) || 1;
             const rect = ws.getBoundingClientRect(), mouseWorldX = ((e.clientX - rect.left) - wsPanX) / zoom, mouseWorldY = ((e.clientY - rect.top) - wsPanY) / zoom;
                 const pos = getGateCoordinates(srcEl);
-                const gateType = srcEl.getAttribute('data-gate-type') || '';
-                const pinOffset = getOutputPinOffsetFromElement(srcEl, stateSource);
-                const gateWidth = getComponentWidthByType(gateType);
+                const srcAnchor = getOutputLocalAnchor(srcEl, stateSource);
                 previewPath.setAttribute(
                     'd',
                     getOrthogonalPath(
-                        pos.x + gateWidth,
-                        pos.y + pinOffset,
+                        pos.x + srcAnchor.x,
+                        pos.y + srcAnchor.y,
                         mouseWorldX,
                         mouseWorldY
                     )
