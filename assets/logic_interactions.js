@@ -550,8 +550,13 @@
             const h=parseFloat(el.style.height)||el.offsetHeight||70;
             minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x+w); maxY=Math.max(maxY,p.y+h);
         });
-        const r=ws.getBoundingClientRect(), pad=80;
-        const z=Math.max(0.25,Math.min(2.0,Math.min((r.width-pad*2)/(maxX-minX||1),(r.height-pad*2)/(maxY-minY||1))));
+        const r=ws.getBoundingClientRect(), pad=96;
+        const contentW=Math.max(maxX-minX, 1), contentH=Math.max(maxY-minY, 1);
+        const rawFit=Math.min((r.width-pad*2)/contentW,(r.height-pad*2)/contentH);
+        // A tiny circuit should remain comfortably editable rather than becoming
+        // either microscopic or comically oversized when Fit is pressed.
+        const maxUsefulFit=(els.length <= 2) ? 1.15 : 1.35;
+        const z=Math.max(0.55,Math.min(maxUsefulFit,rawFit));
         return applyView((r.width-(minX+maxX)*z)/2,(r.height-(minY+maxY)*z)/2,z);
     };
     const onWheel = e => {

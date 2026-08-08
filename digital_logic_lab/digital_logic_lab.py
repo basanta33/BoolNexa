@@ -111,6 +111,9 @@ class State(rx.State):
   annotations: dict[str, dict] = {}
   annotation_keys: list[str] = []
   is_text_placement_mode: bool = False
+  component_library_section: str = "logic"
+  project_status: str = "Ready"
+
   active_gate_options: list[str] = [
       "NOT",
       "AND",
@@ -562,9 +565,33 @@ class State(rx.State):
     self.verify_generated_circuit()
 
   # Email registration required before project saving.
+  def save_project_download(self):
+    """Download the current simulator project as a portable JSON file."""
+    self.project_status = "Project saved · boolnexa_project.json"
+    data = {
+        "format": "boolnexa-project",
+        "version": 1,
+        "gates": copy.deepcopy(self.gates),
+        "gate_keys": copy.deepcopy(self.gate_keys),
+        "wire_offsets": copy.deepcopy(self.wire_offsets),
+        "annotations": copy.deepcopy(self.annotations),
+        "annotation_keys": copy.deepcopy(self.annotation_keys),
+    }
+    return rx.download(
+        data=json.dumps(data, indent=2),
+        filename="boolnexa_project.json",
+    )
+
+  # Local project import; no account or email is required.
   def import_project_data(self, data: dict):
     data = _decode_callback_payload(data)
     if not data or not isinstance(data, dict):
+      self.project_status = "Load failed · invalid project data"
+      return
+
+    project_format = str(data.get("format", "") or "")
+    if project_format and project_format != "boolnexa-project":
+      self.project_status = "Load failed · unsupported project format"
       return
 
     gates = data.get("gates", {})
@@ -617,7 +644,41 @@ class State(rx.State):
             if str(k).startswith("note_") and str(k).split("_")[-1].isdigit()
         ] or [0]
     )
+
+    # Continue ID allocation after the highest IDs already present in the
+    # restored project. This prevents a newly placed component from replacing
+    # an imported component that has the same generated key.
+    def _max_loaded_suffix(prefix: str) -> int:
+      values = []
+      for key in gate_keys:
+        key_text = str(key)
+        if key_text.startswith(prefix):
+          suffix = key_text.rsplit("_", 1)[-1]
+          if suffix.isdigit():
+            values.append(int(suffix))
+      return max(values or [0])
+
+    self.input_counter = _max_loaded_suffix("input_")
+    self.output_counter = _max_loaded_suffix("output_")
+    self.clock_counter = _max_loaded_suffix("clk_")
+    self.seven_seg_counter = _max_loaded_suffix("seven_seg_")
+    self.gate_counter = _max_loaded_suffix("gate_")
+    self.msi_counter = max(
+        [
+            int(str(key).rsplit("_", 1)[-1])
+            for key in gate_keys
+            if str(key).rsplit("_", 1)[-1].isdigit()
+            and self.gates.get(str(key), {}).get("type") in MSI_LSI_DEFS
+        ] or [0]
+    )
+
+    self.selected_gate_key = ""
+    self.selected_gate_type = ""
+    self.wiring_source = ""
+    self.is_delete_mode = False
+    self.is_text_placement_mode = False
     self.run_circuit_evaluation(self.gates, record_history=False)
+    self.project_status = "Project loaded successfully"
 
   def push_undo_state(self):
     snapshot = {
@@ -751,6 +812,11 @@ class State(rx.State):
       self.selected_gate_type = gate_type
     self.wiring_source = ""
     self.is_delete_mode = False
+
+  def toggle_component_library_section(self, section: str):
+    """Expand one simulator component category at a time."""
+    section = str(section or "")
+    self.component_library_section = "" if self.component_library_section == section else section
 
   def set_selected_io_menu(self, io_type: str):
     if io_type:
@@ -1222,6 +1288,7 @@ class State(rx.State):
     self.selected_gate_type = ""
     self.selected_gate_key = ""
     self.is_delete_mode = False
+    self.project_status = "New project ready"
 
   def run_circuit_evaluation(
       self, updated_gates: dict, record_history: bool = True
@@ -3586,6 +3653,51 @@ def render_wire_path(w: rx.Var) -> rx.Component:
 # 4. WORKBENCH & SIDEBAR
 # =============================================================================
 def index() -> rx.Component:
+  def sidebar_component_card(component_name: str, display_name: str, symbol_scale: float = 0.72):
+    """Visual component card using the same interaction model as Logic Gates."""
+    is_selected = State.selected_gate_type == component_name
+    return rx.el.div(
+        rx.box(
+            rx.text("+", font_size="11px", font_weight="bold", color="#ffffff"),
+            title=f"Quick add {display_name}",
+            position="absolute", top="4px", right="4px",
+            width="18px", height="18px", border_radius="4px", bg="#2563eb",
+            style={"display": "flex", "align_items": "center", "justify_content": "center"},
+            on_click=State.add_gate_at_default_location(component_name),
+            _hover={"bg": "#1d4ed8", "transform": "scale(1.15)"}, z_index="2",
+        ),
+        rx.vstack(
+            rx.center(
+                rx.box(
+                    render_schematic_symbol(component_name, False, "", "", "manual", 1, 0, 0, 0, 0, 0, 0, 0, "0"),
+                    style={"transform": f"scale({symbol_scale})", "transform_origin": "center"},
+                ),
+                height="42px", width="100%",
+            ),
+            rx.text(display_name, font_size="9px", font_weight="black", color=rx.cond(is_selected, "#1e40af", "#475569"), text_align="center"),
+            spacing="1", align_items="center",
+        ),
+        position="relative",
+        style={
+            "width": "47%", "min_height": "66px", "padding": "5px 0px 7px 0px",
+            "cursor": "grab", "overflow": "hidden", "border-radius": "8px",
+            "background": rx.cond(is_selected, "#dbeafe", "#ffffff"),
+            "border": rx.cond(is_selected, "2px solid #2563eb", "1px solid #cbd5e1"),
+        },
+        on_click=State.set_selected_type(component_name),
+        on_double_click=State.add_gate_at_default_location(component_name),
+        _hover={"border-color": "#3b82f6", "background": "#f1f5f9"},
+        custom_attrs={
+            "draggable": "true", "data-gate-type": component_name,
+            "ondragstart": (
+                "event.dataTransfer.clearData();"
+                "event.dataTransfer.setData('application/x-circuit-gate', event.currentTarget.getAttribute('data-gate-type'));"
+                "event.dataTransfer.effectAllowed='copy';"
+            ),
+        },
+    )
+
+
   def sidebar_symbol_tile(gate_name: rx.Var):
     is_selected = State.selected_gate_type == gate_name
 
@@ -3857,10 +3969,15 @@ def index() -> rx.Component:
           ),
       ),
       rx.button(
+          id="new-project-trigger-btn",
+          style={"display": "none"},
+          on_click=State.clear_canvas,
+      ),
+      rx.button(
           id="import-json-trigger-btn",
           style={"display": "none"},
           on_click=rx.call_script(
-              "JSON.stringify(window.__getImportedProjectData ? window.__getImportedProjectData() : null)",
+              "JSON.stringify(window.__importedProjectJson || null)",
               callback=State.import_project_data,
           ),
       ),
@@ -3872,21 +3989,34 @@ def index() -> rx.Component:
           style={"display": "none"},
           on_change=rx.call_script(
               """
-              (event) => {
-                  const file = event.target.files[0];
-                  if (!file) return;
+              const input = document.getElementById("project-file-input");
+              const file = input && input.files ? input.files[0] : null;
+              if (!file) {
+                  console.warn("BoolNexa Load: no project file selected.");
+              } else {
                   const reader = new FileReader();
-                  reader.onload = (e) => {
+                  reader.onload = () => {
                       try {
-                          window.__importedProjectJson = JSON.parse(e.target.result);
-                          const btn = document.getElementById("import-json-trigger-btn");
-                          if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                          window.__importedProjectJson = JSON.parse(reader.result);
+                          const trigger = document.getElementById("import-json-trigger-btn");
+                          if (trigger) {
+                              trigger.click();
+                          } else {
+                              console.error("BoolNexa Load: import trigger not found.");
+                          }
                       } catch (err) {
-                          alert("Invalid project JSON file.");
+                          console.error("BoolNexa Load: invalid project JSON.", err);
+                          alert("Invalid BoolNexa project JSON file.");
+                      } finally {
+                          input.value = "";
                       }
                   };
+                  reader.onerror = () => {
+                      console.error("BoolNexa Load: unable to read selected file.");
+                      alert("Unable to read the selected BoolNexa project file.");
+                      input.value = "";
+                  };
                   reader.readAsText(file);
-                  event.target.value = '';
               }
               """,
           ),
@@ -3965,94 +4095,91 @@ def index() -> rx.Component:
                       href="/tools/number-systems",
                       text_decoration="none",
                   ),
-                  rx.hstack(
-                      rx.icon_button(
-                          rx.icon(tag="type", size=15),
-                          color_scheme=rx.cond(
-                              State.is_text_placement_mode, "blue", "gray"
-                          ),
-                          variant=rx.cond(
-                              State.is_text_placement_mode, "solid", "ghost"
-                          ),
-                          size="1",
-                          on_click=State.toggle_text_placement_mode,
-                          cursor="pointer",
-                          title="Place Text",
-                      ),
-                      rx.icon_button(
-                          rx.icon(tag="trash-2", size=15),
-                          color_scheme=rx.cond(
-                              State.is_delete_mode, "red", "gray"
-                          ),
-                          variant=rx.cond(
-                              State.is_delete_mode, "solid", "ghost"
-                          ),
-                          size="1",
-                          on_click=State.toggle_delete_mode,
-                          cursor="pointer",
-                          title="Toggle Delete Mode (X)",
-                      ),
-                      rx.icon_button(
-                          rx.icon(tag="rotate-ccw", size=15),
-                          color_scheme="red",
-                          variant="ghost",
-                          size="1",
-                          on_click=State.clear_canvas,
-                          cursor="pointer",
-                          title="Clear Canvas",
-                      ),
-                      spacing="1",
-                  ),
                   align_items="center",
                   width="100%",
               ),
               rx.divider(color="#e2e8f0"),
-              # Local project save/load: no account or email required.
+              # Local project controls: no account or email required.
               rx.vstack(
-                  rx.text(
-                      "Project",
-                      font_size="10px",
-                      font_weight="black",
-                      color="#1e293b",
+                  rx.hstack(
+                      rx.text("Project", font_size="11px", font_weight="900", color="#1e293b"),
+                      rx.spacer(),
+                      rx.badge(State.project_status, size="1", variant="soft", color_scheme="gray"),
+                      width="100%", align="center",
                   ),
                   rx.hstack(
                       rx.button(
-                          "Save Project",
-                          size="1",
-                          color_scheme="blue",
-                          variant="soft",
-                          cursor="pointer",
-                          width="48%",
-                          title="Save circuit project locally",
+                          "New", size="1", color_scheme="gray", variant="soft", cursor="pointer", width="31%",
+                          title="Start a new blank project",
                           on_click=rx.call_script(
-                              f"""
-                              const data = {{
-                                  gates: {State.gates.to(str)},
-                                  gate_keys: {State.gate_keys.to(str)},
-                                  wire_offsets: {State.wire_offsets.to(str)},
-                                  annotations: {State.annotations.to(str)},
-                                  annotation_keys: {State.annotation_keys.to(str)}
-                              }};
-                              const blob = new Blob([JSON.stringify(data, null, 2)], {{type: 'application/json'}});
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = 'boolnexa_project.json';
-                              a.click();
-                              URL.revokeObjectURL(url);
-                              """
+                              "if (confirm('Start a new project? Unsaved circuit changes will be cleared.')) { const b=document.getElementById('new-project-trigger-btn'); if (b) b.dispatchEvent(new MouseEvent('click',{bubbles:true})); }"
                           ),
                       ),
                       rx.button(
-                          "Load",
-                          size="1",
-                          color_scheme="blue",
-                          variant="soft",
-                          cursor="pointer",
-                          width="48%",
-                          on_click=rx.call_script(
-                              "document.getElementById('project-file-input').click();"
+                          "Save", size="1", color_scheme="blue", variant="soft", cursor="pointer", width="31%",
+                          title="Download circuit project as JSON", on_click=State.save_project_download,
+                      ),
+                      rx.button(
+                          "Load", size="1", color_scheme="blue", variant="soft", cursor="pointer", width="31%",
+                          title="Load a BoolNexa project JSON file",
+                          on_click=rx.call_script("document.getElementById('project-file-input').click();"),
+                      ),
+                      width="100%", justify="between",
+                  ),
+                  rx.text("JSON project files preserve components, positions, wires and notes.", font_size="8px", color="#64748b"),
+                  width="100%", spacing="1",
+              ),
+              rx.divider(color="#e2e8f0"),
+              rx.vstack(
+                  rx.hstack(
+                      rx.text("Canvas Tools", font_size="11px", font_weight="900", color="#1e293b"),
+                      rx.spacer(),
+                      rx.text("Quick actions", font_size="8px", color="#64748b"),
+                      width="100%",
+                      align="center",
+                  ),
+                  rx.hstack(
+                      rx.button(
+                          rx.hstack(
+                              rx.icon(tag="type", size=13),
+                              rx.text("Text", font_size="9px", font_weight="700"),
+                              spacing="1",
                           ),
+                          size="1",
+                          width="32%",
+                          color_scheme=rx.cond(State.is_text_placement_mode, "blue", "gray"),
+                          variant=rx.cond(State.is_text_placement_mode, "solid", "soft"),
+                          on_click=State.toggle_text_placement_mode,
+                          cursor="pointer",
+                          title="Place text on canvas",
+                      ),
+                      rx.button(
+                          rx.hstack(
+                              rx.icon(tag="trash-2", size=13),
+                              rx.text("Delete", font_size="9px", font_weight="700"),
+                              spacing="1",
+                          ),
+                          size="1",
+                          width="32%",
+                          color_scheme=rx.cond(State.is_delete_mode, "red", "gray"),
+                          variant=rx.cond(State.is_delete_mode, "solid", "soft"),
+                          on_click=State.toggle_delete_mode,
+                          cursor="pointer",
+                          title="Toggle Delete Mode (X)",
+                      ),
+                      rx.button(
+                          rx.hstack(
+                              rx.icon(tag="rotate-ccw", size=13),
+                              rx.text("Reset", font_size="9px", font_weight="700"),
+                              spacing="1",
+                          ),
+                          size="1",
+                          width="32%",
+                          color_scheme="red",
+                          variant="soft",
+                          on_click=State.clear_canvas,
+                          cursor="pointer",
+                          title="Clear all components from canvas",
                       ),
                       width="100%",
                       justify="between",
@@ -4061,141 +4188,130 @@ def index() -> rx.Component:
                   spacing="1",
               ),
               rx.divider(color="#e2e8f0"),
-              rx.vstack(
-                  rx.text(
-                      "Inputs & Outputs",
-                      font_size="10px",
-                      font_weight="black",
-                      color="#1e293b",
-                  ),
-                  rx.el.select(
-                      rx.el.option("-- Select Input / Output --", value=""),
-                      rx.el.option("Input (INPUT)", value="INPUT"),
-                      rx.el.option("Output (OUTPUT)", value="OUTPUT"),
-                      rx.el.option("Clock (CLK)", value="CLK"),
-                      rx.el.option(
-                          "7-Segment Display (SEVEN_SEG)", value="SEVEN_SEG"
+              rx.box(
+                  rx.vstack(
+                      rx.hstack(
+                          rx.vstack(
+                              rx.text("Component Library", font_size="13px", font_weight="900", color="#0f172a"),
+                              rx.text("Click a card to place · + quick-adds", font_size="9px", color="#64748b"),
+                              spacing="0", align_items="start",
+                          ),
+                          rx.spacer(), rx.badge("SIM", size="1", variant="soft", color_scheme="blue"),
+                          width="100%", align="center",
                       ),
-                      value=State.selected_io_menu,
-                      on_change=State.set_selected_io_menu,
-                      style={
-                          "font_size": "10px",
-                          "font_weight": "bold",
-                          "color": "#0f172a",
-                          "background": "#ffffff",
-                          "border": "1px solid #cbd5e1",
-                          "border_radius": "4px",
-                          "padding": "6px",
-                          "outline": "none",
-                          "width": "100%",
-                          "cursor": "pointer",
-                      },
+                      rx.button(
+                          rx.hstack(
+                              rx.text("I/O & Sources", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "io", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("io"),
+                          width="100%", size="1", variant="soft", color_scheme="gray",
+                      ),
+                      rx.cond(State.component_library_section == "io", rx.box(rx.flex(
+                              sidebar_component_card("INPUT", "INPUT"),
+                              sidebar_component_card("OUTPUT", "OUTPUT"),
+                              sidebar_component_card("CLK", "CLOCK"),
+                              sidebar_component_card("SEVEN_SEG", "7-SEG", 0.58),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"), rx.fragment()),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("Logic Gates", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "logic", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("logic"),
+                          width="100%", size="1", variant="soft", color_scheme="blue",
+                      ),
+                      rx.cond(State.component_library_section == "logic", rx.box(rx.flex(
+                              rx.foreach(State.active_gate_options, sidebar_symbol_tile),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"), rx.fragment()),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("Flip-Flops", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "ff", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("ff"),
+                          width="100%", size="1", variant="soft", color_scheme="gray",
+                      ),
+                      rx.cond(State.component_library_section == "ff", rx.box(rx.flex(
+                              sidebar_component_card("D_FF", "D FF", 0.60),
+                              sidebar_component_card("RS_FF", "RS FF", 0.56),
+                              sidebar_component_card("JK_FF", "JK FF", 0.56),
+                              sidebar_component_card("T_FF", "T FF", 0.60),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"), rx.fragment()),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("MSI / LSI Blocks", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "msi", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("msi"),
+                          width="100%", size="1", variant="soft", color_scheme="gray",
+                      ),
+                      rx.cond(
+                          State.component_library_section == "msi",
+                          rx.vstack(
+                              rx.box(rx.flex(
+                              sidebar_component_card("HALF_ADDER", "Half Adder", 0.48),
+                              sidebar_component_card("FULL_ADDER", "Full Adder", 0.42),
+                              sidebar_component_card("HALF_SUBTRACTOR", "Half Sub", 0.44),
+                              sidebar_component_card("FULL_SUBTRACTOR", "Full Sub", 0.40),
+                              sidebar_component_card("MUX_2_1", "2:1 MUX", 0.52),
+                              sidebar_component_card("DEMUX_1_2", "1:2 DEMUX", 0.52),
+                              sidebar_component_card("MUX_4_1", "4:1 MUX", 0.46),
+                              sidebar_component_card("DEMUX_1_4", "1:4 DEMUX", 0.46),
+                              sidebar_component_card("DECODER_2_4", "2->4 Decoder", 0.45),
+                              sidebar_component_card("ENCODER_4_2", "4->2 Encoder", 0.45),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"),
+                              rx.text("All pins are wireable; cascade COUT -> CIN and BOUT -> BIN.", font_size="8px", color="#64748b"),
+                              width="100%", spacing="1",
+                          ),
+                          rx.fragment(),
+                      ),
+                      width="100%", spacing="2",
                   ),
-                  width="100%",
-                  spacing="1",
-              ),
-              rx.vstack(
-                  rx.text(
-                      "Flip-Flops (Sequential)",
-                      font_size="10px",
-                      font_weight="black",
-                      color="#1e293b",
-                  ),
-                  rx.el.select(
-                      rx.el.option("-- Select Flip-Flop --", value=""),
-                      rx.el.option("D Flip-Flop (D_FF)", value="D_FF"),
-                      rx.el.option("RS Flip-Flop (RS_FF)", value="RS_FF"),
-                      rx.el.option("JK Flip-Flop (JK_FF)", value="JK_FF"),
-                      rx.el.option("T Flip-Flop (T_FF)", value="T_FF"),
-                      value=State.selected_ff_menu,
-                      on_change=State.set_selected_ff_menu,
-                      style={
-                          "font_size": "10px",
-                          "font_weight": "bold",
-                          "color": "#1e40af",
-                          "background": "#ffffff",
-                          "border": "1.5px solid #cbd5e1",
-                          "border_radius": "4px",
-                          "padding": "6px",
-                          "outline": "none",
-                          "width": "100%",
-                          "cursor": "pointer",
-                      },
-                  ),
-                  width="100%",
-                  spacing="1",
-              ),
-              rx.vstack(
-                  rx.text(
-                      "MSI / LSI (Functional Blocks)",
-                      font_size="10px",
-                      font_weight="black",
-                      color="#1e293b",
-                  ),
-                  rx.el.select(
-                      rx.el.option("-- Select MSI / LSI Block --", value=""),
-                      rx.el.option("Half Adder", value="HALF_ADDER"),
-                      rx.el.option("Full Adder", value="FULL_ADDER"),
-                      rx.el.option("Half Subtractor", value="HALF_SUBTRACTOR"),
-                      rx.el.option("Full Subtractor", value="FULL_SUBTRACTOR"),
-                      rx.el.option("2:1 Multiplexer", value="MUX_2_1"),
-                      rx.el.option("1:2 Demultiplexer", value="DEMUX_1_2"),
-                      rx.el.option("4:1 Multiplexer", value="MUX_4_1"),
-                      rx.el.option("1:4 Demultiplexer", value="DEMUX_1_4"),
-                      rx.el.option("2->4 Decoder", value="DECODER_2_4"),
-                      rx.el.option("4->2 Encoder", value="ENCODER_4_2"),
-                      value=State.selected_msi_menu,
-                      on_change=State.set_selected_msi_menu,
-                      style={
-                          "font_size": "10px",
-                          "font_weight": "bold",
-                          "color": "#7c3aed",
-                          "background": "#ffffff",
-                          "border": "1.5px solid #c4b5fd",
-                          "border_radius": "4px",
-                          "padding": "6px",
-                          "outline": "none",
-                          "width": "100%",
-                          "cursor": "pointer",
-                      },
-                  ),
-                  rx.text(
-                      "All pins are wireable; cascade COUT -> CIN and BOUT -> BIN.",
-                      font_size="8px",
-                      color="#64748b",
-                  ),
-                  width="100%",
-                  spacing="1",
-              ),
-              rx.divider(color="#e2e8f0"),
-              rx.flex(
-                  rx.foreach(State.active_gate_options, sidebar_symbol_tile),
-                  width="100%",
-                  flex_wrap="wrap",
-                  justify="between",
-                  style={"gap": "10px 0px"},
+                  width="100%", padding="10px",
+                  border="1px solid #dbe3ee", border_radius="12px", background="#f8fafc",
+                  box_shadow="0 2px 8px rgba(15,23,42,0.05)",
+                  max_height="460px",
+                  style={"overflow-y": "auto", "overflow-x": "hidden"},
               ),
               rx.divider(color="#e2e8f0"),
+              rx.box(flex="1"),
               rx.vstack(
-                  rx.text("BoolNexa", font_size="10px", font_weight="black", color="#0f172a"),
+                  rx.text("BoolNexa v1.0", font_size="10px", font_weight="900", color="#0f172a"),
                   rx.text("Interactive Digital Logic Simulator", font_size="8px", color="#64748b"),
                   rx.text("Developed by Basanta Paudyal | v1.0.0", font_size="8px", color="#64748b"),
                   rx.text("boolnexa.sim@gmail.com", font_size="8px", color="#2563eb"),
-                  rx.text("┬⌐ 2026 Basanta Paudyal", font_size="8px", color="#94a3b8"),
-                  width="100%",
-                  spacing="0",
+                  width="100%", spacing="0", padding_top="6px",
               ),
-              rx.box(flex="1"),
               width="100%",
               height="100%",
               spacing="3",
           ),
-          width="260px",
+          width="300px",
+          min_width="300px",
+          max_width="300px",
           height="100vh",
-          padding="16px",
+          padding="18px",
           bg="#ffffff",
-          border_right="2px solid #e2e8f0",
-          style={"overflow-y": "auto"},
+          border_right="1px solid #dbe3ee",
+          box_shadow="4px 0 18px rgba(15,23,42,0.04)",
+          style={"overflow-y": "auto", "overflow-x": "hidden"},
       ),
       rx.box(
           rx.cond(
