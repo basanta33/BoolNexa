@@ -1277,6 +1277,15 @@ class State(rx.State):
             gate[f"input{idx}_src"] = ""
       if self.selected_gate_key == key:
         self.selected_gate_key = ""
+
+      # Remove stale bend offsets for any wire that belonged to this gate.
+      # Wire geometry is rebuilt from the surviving circuit graph below.
+      self.wire_offsets = {
+          wire_id: offset
+          for wire_id, offset in self.wire_offsets.items()
+          if key not in str(wire_id)
+      }
+
       self.run_circuit_evaluation(updated, record_history=False)
 
   def clear_canvas(self):
@@ -1450,6 +1459,7 @@ class State(rx.State):
         new_wires.append({
             "wire_id": wire_id,
             "src_key": src_composite,
+            "src_type": src_type,
             "target_key": target_key,
             "slot": slot,
             "d": path_str,
@@ -3441,6 +3451,18 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   render_named_output_pin(cell_key, "COUT", 60),
               ),
               rx.cond(
+                  is_half_subtractor,
+                  rx.fragment(
+                      render_named_output_pin(cell_key, "DIFF", 25),
+                      render_named_output_pin(cell_key, "BORROW", 50),
+                  ),
+                  rx.cond(
+                      is_full_subtractor,
+                      rx.fragment(
+                          render_named_output_pin(cell_key, "DIFF", 30),
+                          render_named_output_pin(cell_key, "BOUT", 60),
+                      ),
+                      rx.cond(
                   is_mux_2_1, render_named_output_pin(cell_key, "Y", 40),
                   rx.cond(
                       is_demux_1_2,
@@ -3476,6 +3498,8 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                                   ),
                               ),
                           ),
+                      ),
+                  ),
                       ),
                   ),
               ),
@@ -3534,6 +3558,7 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
           ),
           rx.fragment(),
       ),
+      key=cell_key,
       class_name="schematic-gate-card",
       custom_attrs={"data-gate-id": cell_key, "data-gate-type": g_type},
       position="absolute",
@@ -3543,8 +3568,14 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
           is_half_adder,
           "120px",
           rx.cond(
-              is_full_adder,
+              is_half_subtractor,
               "130px",
+              rx.cond(
+                  is_full_subtractor,
+                  "140px",
+                  rx.cond(
+                      is_full_adder,
+                      "130px",
               rx.cond(
                   is_mux_4_1 | is_demux_1_4 | is_decoder_2_4 | is_encoder_4_2,
                   "130px",
@@ -3559,6 +3590,8 @@ def schematic_gate_node(cell_key: rx.Var) -> rx.Component:
                   ),
               ),
           ),
+                  ),
+              ),
       ),
       height=card_height,
       z_index="10",
@@ -3589,17 +3622,11 @@ def render_wire_path(w: rx.Var) -> rx.Component:
       & State.generated_propagation_active
       & (source_level <= State.generated_propagation_level)
   )
+  # Junction markers are shown only for true fan-out from non-INPUT
+  # component outputs. INPUT-source dots stay suppressed, and unrelated
+  # geometric wire crossings remain dot-free. Electrical connectivity itself
+  # continues to come from the circuit graph (src_key/target_key/slot).
   return rx.el.svg.g(
-      rx.cond(
-          w["is_branched"] == "true",
-          rx.el.svg.circle(
-              cx=w["junc_x"],
-              cy=w["src_y"],
-              r="3.5",
-              fill="#0f172a",
-              style={"pointerEvents": "none"},
-          ),
-      ),
       rx.el.svg.path(
           d=w["d"],
           stroke="rgba(0,0,0,0.001)",
@@ -3650,6 +3677,21 @@ def render_wire_path(w: rx.Var) -> rx.Component:
               "transition": "stroke 0.18s ease, stroke-width 0.18s ease",
           },
       ),
+      # Preserve true gate-output fan-out junction markers, while suppressing
+      # INPUT-source dots. Ordinary geometric wire crossings remain dot-free.
+      rx.cond(
+          (w["is_branched"] == "true") & (w["src_type"] != "INPUT"),
+          rx.el.svg.circle(
+              cx=w["junc_x"],
+              cy=w["src_y"],
+              r="3.5",
+              fill=w["color"],
+              stroke="none",
+              style={"pointerEvents": "none"},
+          ),
+          rx.fragment(),
+      ),
+      key=w["wire_id"],
   )
 
 
@@ -4112,6 +4154,109 @@ def index() -> rx.Component:
                   justify="between",
                   style={"gap": "6px"},
               ),
+              rx.box(
+                  rx.vstack(
+                      rx.hstack(
+                          rx.vstack(
+                              rx.text("Component Library", font_size="13px", font_weight="900", color="#0f172a"),
+                              rx.text("Click a card to place · + quick-adds", font_size="9px", color="#64748b"),
+                              spacing="0", align_items="start",
+                          ),
+                          rx.spacer(), rx.badge("SIM", size="1", variant="soft", color_scheme="blue"),
+                          width="100%", align="center",
+                      ),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("I/O & Sources", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "io", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("io"),
+                          width="100%", size="1", variant="soft", color_scheme="gray",
+                      ),
+                      rx.cond(State.component_library_section == "io", rx.box(rx.flex(
+                              sidebar_component_card("INPUT", "INPUT"),
+                              sidebar_component_card("OUTPUT", "OUTPUT"),
+                              sidebar_component_card("CLK", "CLOCK"),
+                              sidebar_component_card("SEVEN_SEG", "7-SEG", 0.58),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"), rx.fragment()),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("Logic Gates", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "logic", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("logic"),
+                          width="100%", size="1", variant="soft", color_scheme="blue",
+                      ),
+                      rx.cond(State.component_library_section == "logic", rx.box(rx.flex(
+                              rx.foreach(State.active_gate_options, sidebar_symbol_tile),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"), rx.fragment()),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("Flip-Flops", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "ff", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("ff"),
+                          width="100%", size="1", variant="soft", color_scheme="gray",
+                      ),
+                      rx.cond(State.component_library_section == "ff", rx.box(rx.flex(
+                              sidebar_component_card("D_FF", "D FF", 0.60),
+                              sidebar_component_card("RS_FF", "RS FF", 0.56),
+                              sidebar_component_card("JK_FF", "JK FF", 0.56),
+                              sidebar_component_card("T_FF", "T FF", 0.60),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"), rx.fragment()),
+                      rx.button(
+                          rx.hstack(
+                              rx.text("MSI / LSI Blocks", font_weight="800", font_size="10px"),
+                              rx.spacer(),
+                              rx.text(rx.cond(State.component_library_section == "msi", "−", "+"), font_size="15px", font_weight="900"),
+                              width="100%",
+                          ),
+                          on_click=lambda: State.toggle_component_library_section("msi"),
+                          width="100%", size="1", variant="soft", color_scheme="gray",
+                      ),
+                      rx.cond(
+                          State.component_library_section == "msi",
+                          rx.vstack(
+                              rx.box(rx.flex(
+                              sidebar_component_card("HALF_ADDER", "Half Adder", 0.48),
+                              sidebar_component_card("FULL_ADDER", "Full Adder", 0.42),
+                              sidebar_component_card("HALF_SUBTRACTOR", "Half Sub", 0.44),
+                              sidebar_component_card("FULL_SUBTRACTOR", "Full Sub", 0.40),
+                              sidebar_component_card("MUX_2_1", "2:1 MUX", 0.52),
+                              sidebar_component_card("DEMUX_1_2", "1:2 DEMUX", 0.52),
+                              sidebar_component_card("MUX_4_1", "4:1 MUX", 0.46),
+                              sidebar_component_card("DEMUX_1_4", "1:4 DEMUX", 0.46),
+                              sidebar_component_card("DECODER_2_4", "2->4 Decoder", 0.45),
+                              sidebar_component_card("ENCODER_4_2", "4->2 Encoder", 0.45),
+                              width="100%", flex_wrap="wrap", justify="between",
+                              style={"gap": "10px 8px"},
+                          ), width="100%", padding="4px 2px"),
+                              rx.text("All pins are wireable; cascade COUT -> CIN and BOUT -> BIN.", font_size="8px", color="#64748b"),
+                              width="100%", spacing="1",
+                          ),
+                          rx.fragment(),
+                      ),
+                      width="100%", spacing="2",
+                  ),
+                  width="100%", padding="10px",
+                  border="1px solid #dbeafe", border_radius="12px",
+                  background="linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+                  box_shadow="0 4px 14px rgba(15,23,42,0.06)",
+                  max_height="460px",
+                  style={"overflow-y": "auto", "overflow-x": "hidden"},
+              ),
               # Local project controls: no account or email required.
               rx.box(
                   rx.vstack(
@@ -4225,124 +4370,21 @@ def index() -> rx.Component:
                   background="#ffffff",
                   box_shadow="0 2px 9px rgba(15,23,42,0.04)",
               ),
-              rx.box(
-                  rx.vstack(
-                      rx.hstack(
-                          rx.vstack(
-                              rx.text("Component Library", font_size="13px", font_weight="900", color="#0f172a"),
-                              rx.text("Click a card to place · + quick-adds", font_size="9px", color="#64748b"),
-                              spacing="0", align_items="start",
-                          ),
-                          rx.spacer(), rx.badge("SIM", size="1", variant="soft", color_scheme="blue"),
-                          width="100%", align="center",
-                      ),
-                      rx.button(
-                          rx.hstack(
-                              rx.text("I/O & Sources", font_weight="800", font_size="10px"),
-                              rx.spacer(),
-                              rx.text(rx.cond(State.component_library_section == "io", "−", "+"), font_size="15px", font_weight="900"),
-                              width="100%",
-                          ),
-                          on_click=lambda: State.toggle_component_library_section("io"),
-                          width="100%", size="1", variant="soft", color_scheme="gray",
-                      ),
-                      rx.cond(State.component_library_section == "io", rx.box(rx.flex(
-                              sidebar_component_card("INPUT", "INPUT"),
-                              sidebar_component_card("OUTPUT", "OUTPUT"),
-                              sidebar_component_card("CLK", "CLOCK"),
-                              sidebar_component_card("SEVEN_SEG", "7-SEG", 0.58),
-                              width="100%", flex_wrap="wrap", justify="between",
-                              style={"gap": "10px 8px"},
-                          ), width="100%", padding="4px 2px"), rx.fragment()),
-                      rx.button(
-                          rx.hstack(
-                              rx.text("Logic Gates", font_weight="800", font_size="10px"),
-                              rx.spacer(),
-                              rx.text(rx.cond(State.component_library_section == "logic", "−", "+"), font_size="15px", font_weight="900"),
-                              width="100%",
-                          ),
-                          on_click=lambda: State.toggle_component_library_section("logic"),
-                          width="100%", size="1", variant="soft", color_scheme="blue",
-                      ),
-                      rx.cond(State.component_library_section == "logic", rx.box(rx.flex(
-                              rx.foreach(State.active_gate_options, sidebar_symbol_tile),
-                              width="100%", flex_wrap="wrap", justify="between",
-                              style={"gap": "10px 8px"},
-                          ), width="100%", padding="4px 2px"), rx.fragment()),
-                      rx.button(
-                          rx.hstack(
-                              rx.text("Flip-Flops", font_weight="800", font_size="10px"),
-                              rx.spacer(),
-                              rx.text(rx.cond(State.component_library_section == "ff", "−", "+"), font_size="15px", font_weight="900"),
-                              width="100%",
-                          ),
-                          on_click=lambda: State.toggle_component_library_section("ff"),
-                          width="100%", size="1", variant="soft", color_scheme="gray",
-                      ),
-                      rx.cond(State.component_library_section == "ff", rx.box(rx.flex(
-                              sidebar_component_card("D_FF", "D FF", 0.60),
-                              sidebar_component_card("RS_FF", "RS FF", 0.56),
-                              sidebar_component_card("JK_FF", "JK FF", 0.56),
-                              sidebar_component_card("T_FF", "T FF", 0.60),
-                              width="100%", flex_wrap="wrap", justify="between",
-                              style={"gap": "10px 8px"},
-                          ), width="100%", padding="4px 2px"), rx.fragment()),
-                      rx.button(
-                          rx.hstack(
-                              rx.text("MSI / LSI Blocks", font_weight="800", font_size="10px"),
-                              rx.spacer(),
-                              rx.text(rx.cond(State.component_library_section == "msi", "−", "+"), font_size="15px", font_weight="900"),
-                              width="100%",
-                          ),
-                          on_click=lambda: State.toggle_component_library_section("msi"),
-                          width="100%", size="1", variant="soft", color_scheme="gray",
-                      ),
-                      rx.cond(
-                          State.component_library_section == "msi",
-                          rx.vstack(
-                              rx.box(rx.flex(
-                              sidebar_component_card("HALF_ADDER", "Half Adder", 0.48),
-                              sidebar_component_card("FULL_ADDER", "Full Adder", 0.42),
-                              sidebar_component_card("HALF_SUBTRACTOR", "Half Sub", 0.44),
-                              sidebar_component_card("FULL_SUBTRACTOR", "Full Sub", 0.40),
-                              sidebar_component_card("MUX_2_1", "2:1 MUX", 0.52),
-                              sidebar_component_card("DEMUX_1_2", "1:2 DEMUX", 0.52),
-                              sidebar_component_card("MUX_4_1", "4:1 MUX", 0.46),
-                              sidebar_component_card("DEMUX_1_4", "1:4 DEMUX", 0.46),
-                              sidebar_component_card("DECODER_2_4", "2->4 Decoder", 0.45),
-                              sidebar_component_card("ENCODER_4_2", "4->2 Encoder", 0.45),
-                              width="100%", flex_wrap="wrap", justify="between",
-                              style={"gap": "10px 8px"},
-                          ), width="100%", padding="4px 2px"),
-                              rx.text("All pins are wireable; cascade COUT -> CIN and BOUT -> BIN.", font_size="8px", color="#64748b"),
-                              width="100%", spacing="1",
-                          ),
-                          rx.fragment(),
-                      ),
-                      width="100%", spacing="2",
-                  ),
-                  width="100%", padding="10px",
-                  border="1px solid #dbeafe", border_radius="12px",
-                  background="linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
-                  box_shadow="0 4px 14px rgba(15,23,42,0.06)",
-                  max_height="460px",
-                  style={"overflow-y": "auto", "overflow-x": "hidden"},
-              ),
               rx.box(flex="1"),
               rx.box(
                   rx.vstack(
                       rx.hstack(
-                          rx.text("BoolNexa", font_size="10px", font_weight="900", color="#0f172a"),
+                          rx.text("BoolNexa", font_size="11px", font_weight="900", color="#0f172a"),
                           rx.spacer(),
                           rx.badge("v1.0", size="1", variant="soft", color_scheme="blue"),
                           width="100%", align="center",
                       ),
                       rx.text(
                           "Developed by B. Paudyal | v1.0.0",
-                          font_size="8px",
+                          font_size="10px",
                           color="#64748b",
                       ),
-                      rx.text("boolnexa.sim@gmail.com", font_size="8px", color="#2563eb"),
+                      rx.text("boolnexa.sim@gmail.com", font_size="10px", color="#2563eb"),
                       width="100%", spacing="0",
                   ),
                   width="100%",
