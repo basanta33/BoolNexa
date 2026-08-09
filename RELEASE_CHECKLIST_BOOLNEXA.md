@@ -10,6 +10,14 @@
 - [x] PWA/SEO/release assets exist and are non-empty.
 - [x] Manifest and robots metadata are valid.
 - [x] No accidental debug/temporary routes are registered.
+- [x] Canonical repository documentation is present.
+- [x] GitHub Actions runs the full pytest and core mypy release gates.
+- [x] Accidental empty command-name files are absent.
+
+## Deferred non-blocking maintenance
+- Legacy Academy and test modules contain pre-existing Ruff formatting/style
+  findings. They do not represent runtime failures and are intentionally
+  deferred to a dedicated formatting change after v1 release verification.
 
 ## Final local verification before deployment
 - [ ] Stop Reflex completely.

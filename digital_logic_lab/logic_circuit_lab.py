@@ -134,7 +134,7 @@ def _mode_button(label: str, mode: str) -> rx.Component:
 
 def logic_circuit_lab() -> rx.Component:
     return rx.box(
-        app_header("boolean"),
+        app_header("circuit"),
         rx.box(
             rx.vstack(
                 page_intro(
